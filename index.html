@@ -411,7 +411,7 @@ window.onload = function() {
     if (act === 'editTask')     { var t = findTask(id, p);  if (t) openEditTask(t, p); }
     if (act === 'extendTask')   { openExtend(id, p); }
     if (act === 'completeTask') { doComplete(id, p); }
-    if (act === 'deleteTask')   { doDeleteTask(id, p); }
+    if (act === 'deleteTask')   { doDelete(id, p); }
     if (act === 'editEvent')    { var ev = findEvent(id, p); if (ev) openEditEvent(ev, p); }
     if (act === 'deleteEvent')  { doDeleteEvent(id, p); }
   });
