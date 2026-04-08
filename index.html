@@ -401,8 +401,34 @@ var PERSON_INFO = {
 //  INIT
 // ═══════════════════════════════════════════════════════════
 window.onload = function() {
+  // Delegated event handler for all action buttons (avoids inline onclick quoting issues)
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('[data-act]');
+    if (!btn) return;
+    var act = btn.dataset.act;
+    var id  = btn.dataset.id;
+    var p   = btn.dataset.p;
+    if (act === 'editTask')     { var t = findTask(id, p);  if (t) openEditTask(t, p); }
+    if (act === 'extendTask')   { openExtend(id, p); }
+    if (act === 'completeTask') { doComplete(id, p); }
+    if (act === 'deleteTask')   { doDeleteTask(id, p); }
+    if (act === 'editEvent')    { var ev = findEvent(id, p); if (ev) openEditEvent(ev, p); }
+    if (act === 'deleteEvent')  { doDeleteEvent(id, p); }
+  });
   loadData();
 };
+
+function findTask(id, p) {
+  var tasks = (state.data.tasks[p] || []);
+  for (var i = 0; i < tasks.length; i++) { if (tasks[i].id === id) return tasks[i]; }
+  return null;
+}
+
+function findEvent(id, p) {
+  var evs = (state.data.events[p] || []);
+  for (var i = 0; i < evs.length; i++) { if (evs[i].id === id) return evs[i]; }
+  return null;
+}
 
 function onDataLoaded(result) {
   setSyncing(false);
@@ -629,11 +655,11 @@ function renderTaskItem(t, p) {
   html += '<div class="task-desc">' + esc(t.desc) + '</div>';
   html += '<div class="task-actions">';
   if (!isDone) {
-    html += '<button class="icon-btn" title="Editar" onclick="openEditTask(' + q(t) + ',\'' + p + '\')">✏️</button>';
-    html += '<button class="icon-btn" title="Extender" onclick="openExtend(\'' + t.id + '\',\'' + p + '\')">➕</button>';
-    html += '<button class="icon-btn" title="Concluir" onclick="doComplete(\'' + t.id + '\',\'' + p + '\')">✅</button>';
+    html += '<button class="icon-btn" title="Editar" data-act="editTask" data-id="' + t.id + '" data-p="' + p + '">✏️</button>';
+    html += '<button class="icon-btn" title="Extender" data-act="extendTask" data-id="' + t.id + '" data-p="' + p + '">➕</button>';
+    html += '<button class="icon-btn" title="Concluir" data-act="completeTask" data-id="' + t.id + '" data-p="' + p + '">✅</button>';
   }
-  html += '<button class="icon-btn" title="Eliminar" onclick="doDelete(\'' + t.id + '\',\'' + p + '\')">🗑️</button>';
+  html += '<button class="icon-btn" title="Eliminar" data-act="deleteTask" data-id="' + t.id + '" data-p="' + p + '">🗑️</button>';
   html += '</div></div>';
 
   html += '<div class="task-meta">';
@@ -1281,8 +1307,8 @@ function renderEventItem(ev, p) {
   html += '<div class="event-time"><div>' + formatDate(ev.date) + '</div><div style="font-size:12px;color:var(--tx2);font-weight:400">' + timeStr + '</div></div>';
   html += '<div class="event-desc">' + esc(ev.desc) + '</div>';
   html += '<div style="display:flex;gap:6px">';
-  html += '<button class="icon-btn" onclick="openEditEvent(' + q(ev) + ',\'' + p + '\')">✏️</button>';
-  html += '<button class="icon-btn" onclick="doDeleteEvent(\'' + ev.id + '\',\'' + p + '\')">🗑️</button>';
+  html += '<button class="icon-btn" title="Editar" data-act="editEvent" data-id="' + ev.id + '" data-p="' + p + '">✏️</button>';
+  html += '<button class="icon-btn" title="Eliminar" data-act="deleteEvent" data-id="' + ev.id + '" data-p="' + p + '">🗑️</button>';
   html += '</div></div>';
   return html;
 }
