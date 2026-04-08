@@ -579,8 +579,8 @@ function renderItems() {
   var events = (state.data.events[p] || []).filter(function(e) {
     return e.status !== 'Eliminado' && e.status !== 'Eliminada';
   });
-  var active  = tasks.filter(function(t){ return t.status !== 'Concluída'; });
-  var done    = tasks.filter(function(t){ return t.status === 'Concluída'; });
+  var active  = tasks.filter(function(t){ return t.status !== 'Concluída' && t.status !== 'Concluida'; });
+  var done    = tasks.filter(function(t){ return t.status === 'Concluída' || t.status === 'Concluida'; });
   var evUp    = events.filter(function(e){ return new Date(e.date) >= today; });
   var evPast  = events.filter(function(e){ return new Date(e.date) < today; });
 
@@ -620,8 +620,8 @@ function renderTasks() {
   var tasks = (state.data.tasks[p] || []).filter(function(t) {
     return t.status !== 'Eliminada' && t.status !== 'Eliminado';
   });
-  var active = tasks.filter(function(t){ return t.status !== 'Concluída'; });
-  var done   = tasks.filter(function(t){ return t.status === 'Concluída'; });
+  var active = tasks.filter(function(t){ return t.status !== 'Concluída' && t.status !== 'Concluida'; });
+  var done   = tasks.filter(function(t){ return t.status === 'Concluída' || t.status === 'Concluida'; });
 
   var html = '<div class="section-header">';
   html += '<div class="section-title">Tarefas — ' + PERSON_LABELS[p] + '</div>';
