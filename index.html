@@ -1466,28 +1466,17 @@ function formatDate(s) {
   } catch(e) { return s; }
 }
 function formatTime(v) {
-  // Handles both "HH:MM" strings and Google Sheets epoch-1899 date strings
   if (!v) return '';
   var s = String(v).trim();
-  // Already HH:MM or HH:MM:SS
+  // Already a plain HH:MM or HH:MM:SS string
   if (/^\d{1,2}:\d{2}/.test(s)) return s.substring(0, 5);
-  // Google Sheets date object like "Sat Dec 30 1899 10:10:00 GMT..."
+  // Google Sheets epoch-1899 date string e.g. "Sat Dec 30 1899 12:36:00 GMT-0036..."
+  // Use LOCAL hours/minutes (not UTC) to avoid the historical LMT offset (+36min for Lisbon)
   try {
     var d = new Date(s);
     if (!isNaN(d.getTime())) {
-      // Use Lisbon timezone (Europe/Lisbon = UTC+0 or UTC+1 in summer)
-      // The raw UTC hours from a 1899-epoch time are the actual time values
-      var utcH = d.getUTCHours();
-      var utcM = d.getUTCMinutes();
-      // Adjust for Lisbon: WET=UTC+0, WEST=UTC+1 (summer)
-      // For 1899 dates the raw UTC time IS the intended time (no TZ shift needed)
-      // But the display was shifted by old GMT-0036 offset (36 min)
-      // The real stored value: add the offset minutes back
-      var totalMin = utcH * 60 + utcM;
-      // GMT-0036 means the browser was adding 36min, so raw UTC = intended - 36min
-      // Correct: just use what's stored as UTC and ignore the 1899 artifact
-      var h = utcH < 10 ? '0'+utcH : ''+utcH;
-      var m = utcM < 10 ? '0'+utcM : ''+utcM;
+      var h = ('0' + d.getHours()).slice(-2);
+      var m = ('0' + d.getMinutes()).slice(-2);
       return h + ':' + m;
     }
   } catch(e) {}
