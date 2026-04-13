@@ -858,10 +858,22 @@ function renderPlanning() {
         if (breakInfo) {
           cellCls += ' pause';
           content += '<span class="pg-chip pause-lbl">☕ ' + breakInfo.label + '</span>';
+          // Events can overlap with break hours — always show them
+          getEventsForDayHour(p, state.planDay, hh).forEach(function(ev) {
+            var evTime = formatTime(ev.startTime);
+            var evLabel = (evTime ? evTime + ' ' : '') + esc(ev.desc.length > 18 ? ev.desc.substring(0,18)+'…' : ev.desc);
+            content += '<span class="pg-chip event" title="' + esc(ev.desc) + '">📅 ' + evLabel + '</span>';
+          });
         } else if ((pi.fabril && hh >= pi.fabril.start && hh < pi.fabril.end) ||
                    isOnFabrilDuty(p, state.planDay, hh)) {
           cellCls += ' work';
           content += '<span class="pg-chip fabril">🏭 Espaço Fabril</span>';
+          // Events during fabril hours also shown
+          getEventsForDayHour(p, state.planDay, hh).forEach(function(ev) {
+            var evTime = formatTime(ev.startTime);
+            var evLabel = (evTime ? evTime + ' ' : '') + esc(ev.desc.length > 18 ? ev.desc.substring(0,18)+'…' : ev.desc);
+            content += '<span class="pg-chip event" title="' + esc(ev.desc) + '">📅 ' + evLabel + '</span>';
+          });
         } else {
           cellCls += ' work';
           // Active tasks for this person on selected day
