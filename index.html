@@ -1075,8 +1075,15 @@ function hasEventInBlock(p, day, blockHours) {
     if (!ev.startTime) continue;
     var st = formatTime(ev.startTime);
     if (!st) continue;
-    var h = parseInt(st.split(':')[0]);
-    if (blockHours.indexOf(h) !== -1) return true;
+    var etClean = ev.endTime ? formatTime(ev.endTime) : '';
+    var sh = timeToDecimal(st);
+    var eh = etClean ? timeToDecimal(etClean) : sh + 1;
+    if (eh <= sh) eh = sh + 1;
+    // Check if event overlaps with any hour slot in the block
+    for (var bi=0; bi<blockHours.length; bi++) {
+      var hh = blockHours[bi];
+      if (sh < (hh + 1) && eh > hh) return true;
+    }
   }
   return false;
 }
@@ -1257,15 +1264,24 @@ function countWorkdays(startISO, endISO) {
   }
   return count || 1;
 }
+function timeToDecimal(t) {
+  // Converts 'HH:MM' to decimal hours e.g. '11:35' -> 11.583
+  if (!t) return 0;
+  var parts = t.split(':');
+  return parseInt(parts[0]||0) + (parseInt(parts[1]||0) / 60);
+}
+
 function getEventsForDayHour(p, day, hh) {
   return getDayEvents(p, day).filter(function(ev) {
     if (!ev.startTime) return false;
     var stClean = formatTime(ev.startTime);
-    var etClean = ev.endTime ? formatTime(ev.endTime) : '';
     if (!stClean) return false;
-    var sh = parseInt(stClean.split(':')[0]);
-    var eh = etClean ? parseInt(etClean.split(':')[0]) : sh + 1;
-    return hh >= sh && hh < eh;
+    var etClean = ev.endTime ? formatTime(ev.endTime) : '';
+    var sh = timeToDecimal(stClean);
+    var eh = etClean ? timeToDecimal(etClean) : sh + 1;
+    if (eh <= sh) eh = sh + 1; // safety: end must be after start
+    // Show event in cell hh if event overlaps with [hh, hh+1)
+    return sh < (hh + 1) && eh > hh;
   });
 }
 
