@@ -860,9 +860,10 @@ function renderPlanning() {
           content += '<span class="pg-chip pause-lbl">☕ ' + breakInfo.label + '</span>';
           // Events can overlap with break hours — always show them
           getEventsForDayHour(p, state.planDay, hh).forEach(function(ev) {
-            var evTime = formatTime(ev.startTime);
-            var evLabel = (evTime ? evTime + ' ' : '') + esc(ev.desc.length > 18 ? ev.desc.substring(0,18)+'…' : ev.desc);
-            content += '<span class="pg-chip event" title="' + esc(ev.desc) + '">📅 ' + evLabel + '</span>';
+            var evSt = formatTime(ev.startTime); var evEt = formatTime(ev.endTime);
+            var evTime = evSt + (evEt ? '–'+evEt : '');
+            var evLabel = (evTime ? evTime + ' ' : '') + esc(ev.desc.length > 16 ? ev.desc.substring(0,16)+'…' : ev.desc);
+            content += '<span class="pg-chip event" title="' + esc(ev.desc) + ' (' + evTime + ')">📅 ' + evLabel + '</span>';
           });
         } else if ((pi.fabril && hh >= pi.fabril.start && hh < pi.fabril.end) ||
                    isOnFabrilDuty(p, state.planDay, hh)) {
@@ -870,9 +871,10 @@ function renderPlanning() {
           content += '<span class="pg-chip fabril">🏭 Espaço Fabril</span>';
           // Events during fabril hours also shown
           getEventsForDayHour(p, state.planDay, hh).forEach(function(ev) {
-            var evTime = formatTime(ev.startTime);
-            var evLabel = (evTime ? evTime + ' ' : '') + esc(ev.desc.length > 18 ? ev.desc.substring(0,18)+'…' : ev.desc);
-            content += '<span class="pg-chip event" title="' + esc(ev.desc) + '">📅 ' + evLabel + '</span>';
+            var evSt = formatTime(ev.startTime); var evEt = formatTime(ev.endTime);
+            var evTime = evSt + (evEt ? '–'+evEt : '');
+            var evLabel = (evTime ? evTime + ' ' : '') + esc(ev.desc.length > 16 ? ev.desc.substring(0,16)+'…' : ev.desc);
+            content += '<span class="pg-chip event" title="' + esc(ev.desc) + ' (' + evTime + ')">📅 ' + evLabel + '</span>';
           });
         } else {
           cellCls += ' work';
@@ -882,9 +884,10 @@ function renderPlanning() {
           });
           // Events
           getEventsForDayHour(p, state.planDay, hh).forEach(function(ev) {
-            var evTime = formatTime(ev.startTime);
-            var evLabel = (evTime ? evTime + ' ' : '') + esc(ev.desc.length > 18 ? ev.desc.substring(0,18)+'…' : ev.desc);
-            content += '<span class="pg-chip event" title="' + esc(ev.desc) + '">📅 ' + evLabel + '</span>';
+            var evSt = formatTime(ev.startTime); var evEt = formatTime(ev.endTime);
+            var evTime = evSt + (evEt ? '–'+evEt : '');
+            var evLabel = (evTime ? evTime + ' ' : '') + esc(ev.desc.length > 16 ? ev.desc.substring(0,16)+'…' : ev.desc);
+            content += '<span class="pg-chip event" title="' + esc(ev.desc) + ' (' + evTime + ')">📅 ' + evLabel + '</span>';
           });
           // RULE: office hours must never be empty — show chip even without tasks/events
           if (!content) {
@@ -936,7 +939,8 @@ function renderPlanning() {
       dayEvs.forEach(function(ev) {
         html += '<div class="ds-row"><div class="ds-dot" style="background:var(--orange)"></div>';
         html += '<div style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(ev.desc) + '</div>';
-        html += '<span class="pill orange" style="font-size:10px">' + (formatTime(ev.startTime)||'?') + '</span></div>';
+        var dsSt = formatTime(ev.startTime); var dsEt = formatTime(ev.endTime);
+        html += '<span class="pill orange" style="font-size:10px">' + (dsSt||'?') + (dsEt ? '–'+dsEt : '') + '</span></div>';
       });
     }
     html += '</div>';
@@ -1288,12 +1292,9 @@ function getEventsForDayHour(p, day, hh) {
     if (!ev.startTime) return false;
     var stClean = formatTime(ev.startTime);
     if (!stClean) return false;
-    var etClean = ev.endTime ? formatTime(ev.endTime) : '';
     var sh = timeToDecimal(stClean);
-    var eh = etClean ? timeToDecimal(etClean) : sh + 1;
-    if (eh <= sh) eh = sh + 1; // safety: end must be after start
-    // Show event in cell hh if event overlaps with [hh, hh+1)
-    return sh < (hh + 1) && eh > hh;
+    // Show event only in the cell where it STARTS (avoids duplicates across cells)
+    return Math.floor(sh) === hh;
   });
 }
 
