@@ -924,7 +924,7 @@ function renderPlanning() {
       dayEvs.forEach(function(ev) {
         html += '<div class="ds-row"><div class="ds-dot" style="background:var(--orange)"></div>';
         html += '<div style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(ev.desc) + '</div>';
-        html += '<span class="pill orange" style="font-size:10px">' + (ev.startTime||'?') + '</span></div>';
+        html += '<span class="pill orange" style="font-size:10px">' + (formatTime(ev.startTime)||'?') + '</span></div>';
       });
     }
     html += '</div>';
@@ -947,7 +947,13 @@ function getWeekMon(d, offset) {
   dt.setHours(0,0,0,0);
   return dt;
 }
-function isoDate(d) { return new Date(d).toISOString().split('T')[0]; }
+function isoDate(d) {
+  var dt = new Date(d);
+  var y  = dt.getFullYear();
+  var m  = ('0'+(dt.getMonth()+1)).slice(-2);
+  var dd = ('0'+dt.getDate()).slice(-2);
+  return y+'-'+m+'-'+dd;
+}
 function getDayTasks(p, day) {
   return (state.data.tasks[p]||[]).filter(function(t) {
     return t.status==='Em curso' && t.start && t.end && day>=t.start && day<=t.end;
@@ -1446,7 +1452,11 @@ function q(obj) {
   return "JSON.parse('" + JSON.stringify(obj).replace(/\\/g,'\\\\').replace(/'/g,"\\'") + "')";
 }
 function todayISO() {
-  return new Date().toISOString().split('T')[0];
+  var dt = new Date();
+  var y  = dt.getFullYear();
+  var m  = ('0'+(dt.getMonth()+1)).slice(-2);
+  var dd = ('0'+dt.getDate()).slice(-2);
+  return y+'-'+m+'-'+dd;
 }
 function formatDate(s) {
   if (!s) return '—';
