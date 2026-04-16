@@ -889,9 +889,10 @@ function renderPlanning() {
             var evLabel = (evTime ? evTime + ' ' : '') + esc(ev.desc.length > 16 ? ev.desc.substring(0,16)+'…' : ev.desc);
             content += '<span class="pg-chip event" title="' + esc(ev.desc) + ' (' + evTime + ')">📅 ' + evLabel + '</span>';
           });
-          // RULE: office hours must never be empty — show chip even without tasks/events
+          // No task and no event in this office hour → send to fabril
           if (!content) {
-            content = '<span class="pg-chip office-free">💼 Escritório</span>';
+            content = '<span class="pg-chip fabril">🏭 Espaço Fabril</span>';
+            cellCls = cellCls.replace(' work', '') + ' work'; // keep work class
           }
         }
       }
@@ -1202,6 +1203,17 @@ function isOnFabrilDuty(p, day, hh) {
   for (var i=0; i<bidxs.length; i++) {
     if ((OFFICE_BLOCKS[p][bidxs[i]]||[]).indexOf(hh) !== -1) return true;
   }
+  // If hour is in an office block but has NO allocated task → treat as fabril
+  var sc = SCHEDULES[p];
+  if (!sc) return false;
+  var alloc = getAllocatedHours(p, day, sc);
+  var inOfficeBlock = false;
+  for (var bi=0; bi<OFFICE_BLOCKS[p].length; bi++) {
+    if (bidxs.indexOf(bi)===-1 && OFFICE_BLOCKS[p][bi].indexOf(hh)!==-1) {
+      inOfficeBlock = true; break;
+    }
+  }
+  if (inOfficeBlock && !alloc[hh]) return true; // office block but no task → fabril
   return false;
 }
 
