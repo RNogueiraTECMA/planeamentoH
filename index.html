@@ -846,6 +846,13 @@ function renderPlanning() {
 
       if (hh < sc.start || hh >= sc.end) {
         cellCls += ' off';
+        // Still show events even outside working hours (e.g. Ricardo event at 16:xx)
+        getEventsForDayHour(p, state.planDay, hh).forEach(function(ev) {
+          var evSt = formatTime(ev.startTime); var evEt = formatTime(ev.endTime);
+          var evTime = evSt + (evEt ? '–'+evEt : '');
+          var evLabel = (evTime ? evTime + ' ' : '') + esc(ev.desc.length > 16 ? ev.desc.substring(0,16)+'…' : ev.desc);
+          content += '<span class="pg-chip event" title="' + esc(ev.desc) + ' (' + evTime + ')">📅 ' + evLabel + '</span>';
+        });
       } else {
         // Check if this hour is a break
         var breakInfo = null;
@@ -1250,21 +1257,54 @@ function getAllocatedHours(p, day, sc) {
     return (a.end||'9999')<=(b.end||'9999') ? -1 : 1;
   });
 
-  var blocks  = getOfficeDayBlocks(p, day);
+  var blocks = getOfficeDayBlocks(p, day);
   var hourToTask = {};
-  var blockIdx   = 0;
+  var usedBlockIdxs = [];
 
-  for (var ti=0; ti<tasks.length && blockIdx<blocks.length; ti++) {
+  for (var ti=0; ti<tasks.length; ti++) {
     var t = tasks[ti];
     var totalH = (t.hours||0)+(t.hoursExtra||0);
     var wdays  = Math.max(1, countWorkdays(t.start||day, t.end));
     var hoursToday = Math.ceil(totalH/wdays);
-    var done = 0;
-    while (blockIdx<blocks.length && done<hoursToday) {
-      blocks[blockIdx].forEach(function(h){ hourToTask[h]=t; });
-      done += blocks[blockIdx].length;
-      blockIdx++;
+
+    // Find the MINIMUM set of available blocks that covers hoursToday.
+    // Try single blocks first (fewest blocks = best), then pairs, etc.
+    var availIdxs = [];
+    for (var bi=0; bi<blocks.length; bi++) {
+      if (usedBlockIdxs.indexOf(bi) === -1) availIdxs.push(bi);
     }
+    if (!availIdxs.length) break;
+
+    var chosen = null;
+    // Try increasing number of blocks until we cover hoursToday
+    for (var r=1; r<=availIdxs.length; r++) {
+      // Find combination of r blocks with minimum total hours >= hoursToday
+      var bestCombo = null, bestTotal = Infinity;
+      // Enumerate combinations of size r from availIdxs
+      (function findCombos(start, combo) {
+        if (combo.length === r) {
+          var total = 0;
+          combo.forEach(function(i){ total += blocks[i].length; });
+          if (total >= hoursToday && total < bestTotal) {
+            bestTotal = total;
+            bestCombo = combo.slice();
+          }
+          return;
+        }
+        for (var k=start; k<availIdxs.length; k++) {
+          combo.push(availIdxs[k]);
+          findCombos(k+1, combo);
+          combo.pop();
+        }
+      })(0, []);
+      if (bestCombo !== null) { chosen = bestCombo; break; }
+    }
+
+    if (!chosen) break;
+    chosen.forEach(function(i) {
+      usedBlockIdxs.push(i);
+      blocks[i].forEach(function(h){ hourToTask[h] = t; });
+    });
   }
   return hourToTask;
 }
