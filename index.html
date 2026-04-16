@@ -163,6 +163,8 @@ textarea{resize:vertical;min-height:70px}
 .day-btn{padding:6px 13px;border-radius:20px;border:1px solid var(--border);background:var(--surface);color:var(--tx2);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;font-family:inherit}
 .day-btn:hover{border-color:var(--accent);color:var(--accent)}
 .day-btn.sel{background:var(--navy);color:#fff;border-color:var(--navy)}
+.day-btn.hol{border-color:#4caf50;color:#2e7d32;background:#e8f5e9}
+.day-btn.hol.sel{background:#2e7d32;color:#fff;border-color:#2e7d32}
 .day-btn.tod{border-color:var(--accent);color:var(--accent)}
 .pg-wrap{overflow-x:auto;margin-bottom:16px}
 .pg{display:grid;grid-template-columns:52px repeat(3,1fr);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;min-width:560px;background:var(--surface);box-shadow:var(--s1)}
@@ -442,6 +444,85 @@ var PERSON_INFO = {
 // ═══════════════════════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════
+//  FERIADOS NACIONAIS PORTUGAL
+// ═══════════════════════════════════════════════════════════
+
+function calcEaster(year) {
+  // Meeus/Jones/Butcher algorithm for Easter (Gregorian)
+  var a = year % 19;
+  var b = Math.floor(year / 100);
+  var c = year % 100;
+  var d = Math.floor(b / 4);
+  var e = b % 4;
+  var f = Math.floor((b + 8) / 25);
+  var g = Math.floor((b - f + 1) / 3);
+  var h = (19*a + b - d - g + 15) % 30;
+  var i = Math.floor(c / 4);
+  var k = c % 4;
+  var l = (32 + 2*e + 2*i - h - k) % 7;
+  var m = Math.floor((a + 11*h + 22*l) / 451);
+  var month = Math.floor((h + l - 7*m + 114) / 31); // 1=Jan
+  var day   = ((h + l - 7*m + 114) % 31) + 1;
+  return new Date(year, month-1, day);
+}
+
+function addDays(date, n) {
+  var d = new Date(date);
+  d.setDate(d.getDate() + n);
+  return d;
+}
+
+function getPortugueseHolidays(year) {
+  var easter = calcEaster(year);
+  var sexFeiraSanta = addDays(easter, -2);
+  var corpusChristi = addDays(easter, 60);
+
+  var holidays = [
+    // Feriados fixos nacionais
+    { date: year+'-01-01', name: 'Ano Novo' },
+    { date: fmtHolidayDate(sexFeiraSanta), name: 'Sexta-feira Santa' },
+    { date: year+'-04-25', name: 'Dia da Liberdade' },
+    { date: year+'-05-01', name: 'Dia do Trabalhador' },
+    { date: fmtHolidayDate(corpusChristi), name: 'Corpo de Deus' },
+    { date: year+'-06-10', name: 'Dia de Portugal' },
+    { date: year+'-08-15', name: 'Assunção de Nossa Senhora' },
+    { date: year+'-10-05', name: 'Implantação da República' },
+    { date: year+'-11-01', name: 'Dia de Todos os Santos' },
+    { date: year+'-12-01', name: 'Restauração da Independência' },
+    { date: year+'-12-08', name: 'Imaculada Conceição' },
+    { date: year+'-12-25', name: 'Natal' },
+    // Feriado municipal (24 de junho — S. João)
+    { date: year+'-06-24', name: 'Dia de S. João (Municipal)' }
+  ];
+  return holidays;
+}
+
+function fmtHolidayDate(d) {
+  var y = d.getFullYear();
+  var m = ('0'+(d.getMonth()+1)).slice(-2);
+  var dd = ('0'+d.getDate()).slice(-2);
+  return y+'-'+m+'-'+dd;
+}
+
+// Cache holidays per year
+var _holidayCache = {};
+function getHolidaysForYear(year) {
+  if (!_holidayCache[year]) _holidayCache[year] = getPortugueseHolidays(year);
+  return _holidayCache[year];
+}
+
+function isHoliday(dateISO) {
+  if (!dateISO) return null;
+  var year = parseInt(dateISO.substring(0,4));
+  var holidays = getHolidaysForYear(year);
+  for (var i=0; i<holidays.length; i++) {
+    if (holidays[i].date === dateISO) return holidays[i];
+  }
+  return null;
+}
+
 window.onload = function() {
   // Delegated event handler for all action buttons (avoids inline onclick quoting issues)
   document.addEventListener('click', function(e) {
@@ -650,6 +731,7 @@ function renderItems() {
   var evPast  = events.filter(function(e){ return new Date(e.date) < today; });
 
   var todayAbs = isPersonAbsent(p, todayISO());
+  var todayHoliday = isHoliday(todayISO());
   var html = '<div class="section-header">';
   html += '<div class="section-title">Tarefas e Eventos — ' + PERSON_LABELS[p] + '</div>';
   html += '<div style="display:flex;gap:8px">';
@@ -657,6 +739,10 @@ function renderItems() {
   html += '<button class="btn btn-outline btn-sm" onclick="openNewEvent()">+ Evento</button>';
   html += '<button class="btn btn-outline btn-sm" onclick="openNewAbsence()">🏠 Ausência</button>';
   html += '</div></div>';
+  if (todayHoliday) {
+    html += '<div style="background:#e8f5e9;border:1px solid #4caf50;border-radius:8px;padding:10px 14px;margin-bottom:14px;color:#2e7d32;font-size:13px">';
+    html += '🎉 Hoje é feriado: <strong>' + esc(todayHoliday.name) + '</strong></div>';
+  }
   if (todayAbs) {
     html += '<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:10px 14px;margin-bottom:14px;color:#856404;font-size:13px">';
     html += absenceLabel(todayAbs) + ' — ' + formatDate(todayAbs.start) + (todayAbs.end !== todayAbs.start ? ' a ' + formatDate(todayAbs.end) : '');
@@ -890,8 +976,10 @@ function renderPlanning() {
     var isSel = (iso === state.planDay);
     var lbl = d.toLocaleDateString('pt-PT', { weekday:'short', day:'numeric', month:'short' });
     lbl = lbl.charAt(0).toUpperCase() + lbl.slice(1);
-    var cls = 'day-btn' + (isSel ? ' sel' : (isT ? ' tod' : ''));
-    html += '<button class="' + cls + '" onclick="planSelDay(\'' + iso + '\')">' + lbl + '</button>';
+    var isHol = !!isHoliday(iso);
+    var cls = 'day-btn' + (isSel ? ' sel' : (isT ? ' tod' : '')) + (isHol ? ' hol' : '');
+    var holName = isHol ? ' title="' + isHoliday(iso).name + '"' : '';
+    html += '<button class="' + cls + '"' + holName + ' onclick="planSelDay(\'' + iso + '\')">' + lbl + (isHol ? ' 🎉' : '') + '</button>';
   });
   html += '</div>';
 
@@ -919,7 +1007,14 @@ function renderPlanning() {
       var content = '';
 
       var absToday = isPersonAbsent(p, state.planDay);
-      if (absToday && hh >= sc.start && hh < sc.end) {
+      var holidayToday = isHoliday(state.planDay);
+      if (holidayToday && hh >= sc.start && hh < sc.end) {
+        // Public holiday — show holiday chip
+        cellCls += ' off';
+        if (hh === Math.floor(sc.start)) {
+          content = '<span class="pg-chip pause-lbl">🎉 ' + esc(holidayToday.name) + '</span>';
+        }
+      } else if (absToday && hh >= sc.start && hh < sc.end) {
         // Absent — show absence chip for all working hours
         cellCls += ' off';
         if (hh === Math.floor(sc.start)) {
@@ -1016,7 +1111,10 @@ function renderPlanning() {
     html += '<div class="ds-card">';
     html += '<div class="ds-head"><div class="ds-av ' + pi.avCls + '">' + pi.ini + '</div>';
     html += '<div><div class="ds-name">' + pi.firstName + '</div><div class="ds-sched">' + pi.sched + '</div></div></div>';
-    if (!dayTasks.length && !dayEvs.length) {
+    var dayHoliday = isHoliday(state.planDay);
+    if (dayHoliday) {
+      html += '<div style="font-size:12px;color:#2e7d32;text-align:center;padding:8px 0">🎉 ' + esc(dayHoliday.name) + '</div>';
+    } else if (!dayTasks.length && !dayEvs.length) {
       html += '<div style="font-size:12px;color:var(--tx3);text-align:center;padding:8px 0">Sem actividade</div>';
     } else {
       dayTasks.forEach(function(t) {
@@ -1061,6 +1159,7 @@ function isoDate(d) {
 }
 function getDayTasks(p, day) {
   if (isPersonAbsent(p, day)) return []; // absent — no tasks this day
+  if (isHoliday(day)) return []; // public holiday — no tasks
   return (state.data.tasks[p]||[]).filter(function(t) {
     return t.status==='Em curso' && t.start && t.end && day>=t.start && day<=t.end;
   });
@@ -1411,7 +1510,8 @@ function countWorkdays(startISO, endISO, personKey) {
     var dow = cur.getDay();
     var d = isoDate(cur);
     var absent = personKey && isPersonAbsent(personKey, d);
-    if (dow !== 0 && dow !== 6 && !absent) count++;
+    var holiday = isHoliday(d);
+    if (dow !== 0 && dow !== 6 && !absent && !holiday) count++;
     cur.setDate(cur.getDate() + 1);
   }
   return count || 1;
