@@ -181,6 +181,7 @@ textarea{resize:vertical;min-height:70px}
 .pg-chip.fabril{background:#e8ecff;color:var(--navy);border:1px solid #c7d0f7;font-size:9px}
 .pg-chip.pause-lbl{background:var(--surface2);color:var(--tx3);border:1px solid var(--border);font-size:9px;font-style:italic}
 .pg-chip.office-free{background:#f0f4ff;color:#6b7db3;border:1px solid #d0d8f0;font-size:10px;font-style:italic}
+.pg-chip.absent{background:#fff3cd;color:#856404;border:1px solid #ffc107;font-size:10px}
 .now-line{position:absolute;left:0;right:0;height:2px;background:var(--red);z-index:4;pointer-events:none}
 .now-line::before{content:'';position:absolute;left:-4px;top:-4px;width:9px;height:9px;border-radius:50%;background:var(--red)}
 .pg-legend{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px}
@@ -363,6 +364,47 @@ textarea{resize:vertical;min-height:70px}
 
 <!-- TOAST -->
 <div id="toast-container"></div>
+<!-- MODAL AUSÊNCIA -->
+<div class="overlay hidden" id="modal-absence">
+  <div class="mod" style="max-width:440px">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-absence-title">Nova Ausência</div>
+      <button class="icon-btn" onclick="closeModal('modal-absence')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="absence-id">
+      <input type="hidden" id="absence-person-key">
+      <div class="field">
+        <label class="label">Tipo</label>
+        <select id="absence-type">
+          <option value="Falta">🏠 Falta</option>
+          <option value="Doença">🤒 Doença</option>
+          <option value="Férias">🌴 Férias</option>
+          <option value="Outro">📅 Outro</option>
+        </select>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label class="label">Data Início</label>
+          <input type="date" id="absence-start">
+        </div>
+        <div class="field">
+          <label class="label">Data Fim</label>
+          <input type="date" id="absence-end">
+        </div>
+      </div>
+      <div class="field">
+        <label class="label">Notas (opcional)</label>
+        <input type="text" id="absence-notes" placeholder="Motivo, observações...">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-absence')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveAbsence()">Guardar</button>
+    </div>
+  </div>
+</div>
+
 
 <script>
 
@@ -414,6 +456,8 @@ window.onload = function() {
     if (act === 'deleteTask')   { doDelete(id, p); }
     if (act === 'editEvent')    { var ev = findEvent(id, p); if (ev) openEditEvent(ev, p); }
     if (act === 'deleteEvent')  { doDeleteEvent(id, p); }
+    if (act === 'editAbsence')  { var ab = findAbsence(id, p); if (ab) openEditAbsence(ab, p); }
+    if (act === 'deleteAbsence'){ deleteAbsenceById(id, p); }
   });
   loadData();
 };
@@ -430,11 +474,32 @@ function findEvent(id, p) {
   return null;
 }
 
+function findAbsence(id, p) {
+  var abs = (state.data.absences[p] || []);
+  for (var i = 0; i < abs.length; i++) { if (abs[i].id === id) return abs[i]; }
+  return null;
+}
+
+function isPersonAbsent(p, day) {
+  var abs = state.data.absences[p] || [];
+  for (var i = 0; i < abs.length; i++) {
+    var a = abs[i];
+    if (a.start && a.end && day >= a.start && day <= a.end) return a;
+  }
+  return null;
+}
+
+function absenceLabel(a) {
+  if (!a) return '';
+  var icons = { 'Férias':'🌴', 'Falta':'🏠', 'Doença':'🤒', 'Outro':'📅' };
+  return (icons[a.type_] || '📅') + ' ' + (a.type_ || 'Ausente');
+}
+
 function onDataLoaded(result) {
   setSyncing(false);
   try {
     var d = typeof result === 'string' ? JSON.parse(result) : result;
-    if (d && d.tasks) state.data = d;
+    if (d && d.tasks) { state.data = d; if (!d.absences) state.data.absences = {rn:[],cg:[],pf:[]}; }
   } catch(e) {}
   if (!state.planDay) state.planDay = isoDate(new Date());
   state.loaded = true;
@@ -584,12 +649,20 @@ function renderItems() {
   var evUp    = events.filter(function(e){ return new Date(e.date) >= today; });
   var evPast  = events.filter(function(e){ return new Date(e.date) < today; });
 
+  var todayAbs = isPersonAbsent(p, todayISO());
   var html = '<div class="section-header">';
   html += '<div class="section-title">Tarefas e Eventos — ' + PERSON_LABELS[p] + '</div>';
   html += '<div style="display:flex;gap:8px">';
   html += '<button class="btn btn-primary btn-sm" onclick="openNewTask()">+ Nova Tarefa</button>';
   html += '<button class="btn btn-outline btn-sm" onclick="openNewEvent()">+ Evento</button>';
+  html += '<button class="btn btn-outline btn-sm" onclick="openNewAbsence()">🏠 Ausência</button>';
   html += '</div></div>';
+  if (todayAbs) {
+    html += '<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:10px 14px;margin-bottom:14px;color:#856404;font-size:13px">';
+    html += absenceLabel(todayAbs) + ' — ' + formatDate(todayAbs.start) + (todayAbs.end !== todayAbs.start ? ' a ' + formatDate(todayAbs.end) : '');
+    if (todayAbs.notes) html += ' · ' + esc(todayAbs.notes);
+    html += '</div>';
+  }
 
   if (!tasks.length && !events.length) {
     html += '<div class="empty"><div class="empty-icon">📋</div><p>Sem tarefas ou eventos. Cria o primeiro!</p></div>';
@@ -613,6 +686,7 @@ function renderItems() {
     html += '<div style="font-size:12px;font-weight:600;color:var(--tx2);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 10px">Eventos passados (' + evPast.length + ')</div>';
     evPast.forEach(function(ev) { html += renderEventItem(ev, p); });
   }
+  html += renderAbsenceList(p);
   document.getElementById('tab-items').innerHTML = html;
 }
 function renderTasks() {
@@ -844,9 +918,16 @@ function renderPlanning() {
       var cellCls = 'pg-cell';
       var content = '';
 
-      if (hh < sc.start || hh >= sc.end) {
+      var absToday = isPersonAbsent(p, state.planDay);
+      if (absToday && hh >= sc.start && hh < sc.end) {
+        // Absent — show absence chip for all working hours
         cellCls += ' off';
-        // Still show events even outside working hours (e.g. Ricardo event at 16:xx)
+        if (hh === Math.floor(sc.start)) {
+          content = '<span class="pg-chip pause-lbl">' + absenceLabel(absToday) + '</span>';
+        }
+      } else if (hh < sc.start || hh >= sc.end) {
+        cellCls += ' off';
+        // Still show events even outside working hours
         getEventsForDayHour(p, state.planDay, hh).forEach(function(ev) {
           var evSt = formatTime(ev.startTime); var evEt = formatTime(ev.endTime);
           var evTime = evSt + (evEt ? '–'+evEt : '');
@@ -979,6 +1060,7 @@ function isoDate(d) {
   return y+'-'+m+'-'+dd;
 }
 function getDayTasks(p, day) {
+  if (isPersonAbsent(p, day)) return []; // absent — no tasks this day
   return (state.data.tasks[p]||[]).filter(function(t) {
     return t.status==='Em curso' && t.start && t.end && day>=t.start && day<=t.end;
   });
@@ -1321,13 +1403,15 @@ function getTasksForDayHour(p, day, hh, sc) {
 }
 
 
-function countWorkdays(startISO, endISO) {
+function countWorkdays(startISO, endISO, personKey) {
   if (!startISO || !endISO) return 1;
   var s = new Date(startISO + 'T00:00:00'), e = new Date(endISO + 'T00:00:00');
   var count = 0, cur = new Date(s);
   while (cur <= e) {
     var dow = cur.getDay();
-    if (dow !== 0 && dow !== 6) count++;
+    var d = isoDate(cur);
+    var absent = personKey && isPersonAbsent(personKey, d);
+    if (dow !== 0 && dow !== 6 && !absent) count++;
     cur.setDate(cur.getDate() + 1);
   }
   return count || 1;
@@ -1570,6 +1654,83 @@ function getMonday(d) {
   dt.setDate(diff);
   dt.setHours(0,0,0,0);
   return dt;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  AUSÊNCIAS
+// ═══════════════════════════════════════════════════════════
+function openNewAbsence() {
+  var p = state.person;
+  document.getElementById('absence-id').value = '';
+  document.getElementById('absence-person-key').value = p;
+  document.getElementById('absence-type').value = 'Falta';
+  document.getElementById('absence-start').value = todayISO();
+  document.getElementById('absence-end').value = todayISO();
+  document.getElementById('absence-notes').value = '';
+  document.getElementById('modal-absence-title').textContent = 'Nova Ausência — ' + PERSON_LABELS[p];
+  openModal('modal-absence');
+}
+
+function openEditAbsence(absence, personKey) {
+  document.getElementById('absence-id').value = absence.id;
+  document.getElementById('absence-person-key').value = personKey;
+  document.getElementById('absence-type').value = absence.type_ || 'Falta';
+  document.getElementById('absence-start').value = absence.start || '';
+  document.getElementById('absence-end').value = absence.end || absence.start || '';
+  document.getElementById('absence-notes').value = absence.notes || '';
+  document.getElementById('modal-absence-title').textContent = 'Editar Ausência';
+  openModal('modal-absence');
+}
+
+function saveAbsence() {
+  var id    = document.getElementById('absence-id').value;
+  var p     = document.getElementById('absence-person-key').value;
+  var type_ = document.getElementById('absence-type').value;
+  var start = document.getElementById('absence-start').value;
+  var end   = document.getElementById('absence-end').value;
+  var notes = document.getElementById('absence-notes').value;
+  if (!start) { showToast('Selecciona uma data de início', 'error'); return; }
+  if (!end || end < start) end = start;
+  var action = id ? 'editAbsence' : 'addAbsence';
+  var payload = { person:p, type_:type_, start:start, end:end, notes:notes };
+  if (id) payload.id = id;
+  closeModal('modal-absence');
+  callServer(action, payload, function(err, res) {
+    if (err || (res && res.error)) { showToast('Erro ao guardar ausência', 'error'); return; }
+    showToast((id ? 'Ausência actualizada' : 'Ausência registada') + ' ✓', 'success');
+    loadData();
+  });
+}
+
+function deleteAbsenceById(id, p) {
+  if (!confirm('Eliminar esta ausência?')) return;
+  callServer('deleteAbsence', { id:id, person:p }, function(err, res) {
+    if (err || (res && res.error)) { showToast('Erro ao eliminar', 'error'); return; }
+    showToast('Ausência eliminada', 'success');
+    loadData();
+  });
+}
+
+function renderAbsenceList(p) {
+  var abs = (state.data.absences[p] || []).slice().sort(function(a,b){
+    return (a.start||'') <= (b.start||'') ? -1 : 1;
+  });
+  if (!abs.length) return '';
+  var html = '<div style="margin-top:20px">';
+  html += '<div style="font-size:12px;font-weight:600;color:var(--tx2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Ausências / Férias</div>';
+  abs.forEach(function(a) {
+    var label = absenceLabel(a);
+    var dates = formatDate(a.start) + (a.end && a.end !== a.start ? ' – ' + formatDate(a.end) : '');
+    html += '<div class="event-item">';
+    html += '<div class="event-time"><div style="font-size:13px">' + label + '</div><div style="font-size:11px;color:var(--tx2)">' + dates + '</div></div>';
+    html += '<div class="event-desc">' + esc(a.notes || '') + '</div>';
+    html += '<div style="display:flex;gap:6px">';
+    html += '<button class="icon-btn" title="Editar" data-act="editAbsence" data-id="' + a.id + '" data-p="' + p + '">✏️</button>';
+    html += '<button class="icon-btn" title="Eliminar" data-act="deleteAbsence" data-id="' + a.id + '" data-p="' + p + '">🗑️</button>';
+    html += '</div></div>';
+  });
+  html += '</div>';
+  return html;
 }
 
 </script>
