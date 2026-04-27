@@ -1942,14 +1942,14 @@ function printWeekPlan(wStart, wEnd) {
   doc += 'body{font-family:Arial,sans-serif;font-size:10px;margin:0;padding:10px;color:#111}';
   doc += 'h1{font-size:14px;margin:0 0 4px;color:#16205b}';
   doc += 'h2{font-size:11px;margin:0 0 8px;color:#555;font-weight:normal}';
-  doc += '.week-grid{width:100%;border-collapse:collapse;margin-bottom:14px}';
+  doc += '.week-grid{width:100%;border-collapse:collapse;margin-bottom:0}.day-page{margin-bottom:20px;padding-bottom:10px}';
   doc += '.week-grid th{background:#16205b;color:#fff;padding:5px 4px;text-align:center;font-size:9px;border:1px solid #0d1745}';
   doc += '.week-grid td{border:1px solid #ddd;padding:2px 3px;vertical-align:top;min-height:18px;font-size:9px}';
   doc += '.hour-lbl{color:#888;font-size:8px;width:36px;text-align:right;padding-right:4px;white-space:nowrap}';
   doc += '.cell{border-radius:3px;padding:2px 3px;margin:1px 0;line-height:1.3;white-space:pre-line}';
   doc += '.person-hd{font-size:10px;font-weight:bold}';
   doc += '.person-sched{font-size:8px;opacity:.7}';
-  doc += '@media print{@page{size:A4 landscape;margin:8mm}body{padding:0}button{display:none}}';
+  doc += '@media print{@page{size:A4 landscape;margin:8mm}body{padding:0}button{display:none}.day-page{page-break-after:always}.day-page:last-child{page-break-after:avoid}}';
   doc += '</style></head><body>';
 
   doc += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">';
@@ -1970,6 +1970,7 @@ function printWeekPlan(wStart, wEnd) {
     var hol = isHoliday(day);
     var holStyle = hol ? 'background:#e8f5e9;color:#2e7d32' : 'background:#f0f4ff;color:#16205b';
 
+    doc += '<div class="day-page">';
     doc += '<table class="week-grid"><thead><tr>';
     doc += '<th class="hour-lbl" style="background:#0d1745">Hora</th>';
     persons.forEach(function(p) {
@@ -1999,7 +2000,7 @@ function printWeekPlan(wStart, wEnd) {
       doc += '</tr>';
     });
 
-    doc += '</tbody></table>';
+    doc += '</tbody></table></div>';
   });
 
   // Legend
