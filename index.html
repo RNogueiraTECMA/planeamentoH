@@ -1939,10 +1939,10 @@ function printWeekPlan(wStart, wEnd) {
   var doc = '<!DOCTYPE html><html lang="pt"><head><meta charset="UTF-8">';
   doc += '<title>Planeamento ' + formatDate(wStart) + ' a ' + formatDate(wEnd) + '</title>';
   doc += '<style>';
-  doc += 'body{font-family:Arial,sans-serif;font-size:11px;margin:0;padding:6px 10px;color:#111}';
+  doc += 'body{font-family:Arial,sans-serif;font-size:11px;margin:0;padding:4px 8px;color:#111}';
   doc += 'h1{font-size:14px;margin:0 0 4px;color:#16205b}';
   doc += 'h2{font-size:11px;margin:0 0 8px;color:#555;font-weight:normal}';
-  doc += '.week-grid{width:100%;border-collapse:collapse;margin-bottom:0;table-layout:fixed}.day-page{margin-bottom:24px;padding-bottom:10px}';
+  doc += '.week-grid{width:100%;border-collapse:collapse;margin-bottom:0;table-layout:fixed}.day-page{margin-bottom:0;padding-bottom:0}';
   doc += '.week-grid th{background:#16205b;color:#fff;padding:7px 4px;text-align:center;font-size:10px;border:1px solid #0d1745}';
   doc += '.week-grid td{border:1px solid #ddd;padding:3px 4px;vertical-align:middle;height:24px;font-size:10px}';
   doc += '.hour-lbl{color:#888;font-size:9px;width:26px;min-width:26px;max-width:26px;text-align:right;padding-right:3px;white-space:nowrap}';
@@ -1952,14 +1952,7 @@ function printWeekPlan(wStart, wEnd) {
   doc += '@media print{@page{size:A4 landscape;margin:6mm}body{padding:0;font-size:11px}button{display:none}.day-page{page-break-after:always;height:calc(100vh - 12mm);display:flex;flex-direction:column}.day-page:last-child{page-break-after:avoid}.week-grid{flex:1;height:100%}.week-grid tbody{height:100%}.week-grid tbody tr{height:calc((100% - 60px) / 12)}}';
   doc += '</style></head><body>';
 
-  doc += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">';
-  doc += '<div>';
-  doc += '<h1>📅 Planeamento de Equipa — TecmaFoods</h1>';
-  doc += '<h2>Semana de ' + formatDate(wStart) + ' a ' + formatDate(wEnd) + '</h2>';
-  doc += '</div>';
-  doc += '<div style="text-align:right;font-size:8px;color:#888">Gerado em ' + new Date().toLocaleDateString('pt-PT') + '<br>';
-  doc += '<button onclick="window.print()" style="margin-top:4px;padding:4px 10px;background:#16205b;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:10px">🖨️ Imprimir</button></div>';
-  doc += '</div>';
+  doc += '<div style="text-align:right;margin-bottom:6px"><button onclick="window.print()" style="padding:4px 12px;background:#16205b;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">🖨️ Imprimir</button></div>';
 
   // One table per day
   days.forEach(function(day) {
@@ -1971,6 +1964,10 @@ function printWeekPlan(wStart, wEnd) {
     var holStyle = hol ? 'background:#e8f5e9;color:#2e7d32' : 'background:#f0f4ff;color:#16205b';
 
     doc += '<div class="day-page">';
+    doc += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">';
+    doc += '<div style="font-size:10px;font-weight:bold;color:#16205b">📅 TecmaFoods — Semana de ' + formatDate(wStart) + ' a ' + formatDate(wEnd) + '</div>';
+    doc += '<div style="font-size:8px;color:#888">Gerado em ' + new Date().toLocaleDateString('pt-PT') + '</div>';
+    doc += '</div>';
     doc += '<table class="week-grid"><thead><tr>';
     doc += '<th class="hour-lbl" style="background:#0d1745;width:26px;min-width:26px;max-width:26px">Hora</th>';
     persons.forEach(function(p) {
