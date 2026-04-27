@@ -1934,22 +1934,22 @@ function printWeekPlan(wStart, wEnd) {
 
   var activeHours = hours.filter(hasAnyActive);
 
-  var colW = 'width:' + Math.floor(72/persons.length) + '%';
+  var colW = 'width:' + Math.floor((100 - 4)/persons.length).toFixed(1) + '%';
 
   var doc = '<!DOCTYPE html><html lang="pt"><head><meta charset="UTF-8">';
   doc += '<title>Planeamento ' + formatDate(wStart) + ' a ' + formatDate(wEnd) + '</title>';
   doc += '<style>';
-  doc += 'body{font-family:Arial,sans-serif;font-size:10px;margin:0;padding:10px;color:#111}';
+  doc += 'body{font-family:Arial,sans-serif;font-size:11px;margin:0;padding:6px 10px;color:#111}';
   doc += 'h1{font-size:14px;margin:0 0 4px;color:#16205b}';
   doc += 'h2{font-size:11px;margin:0 0 8px;color:#555;font-weight:normal}';
-  doc += '.week-grid{width:100%;border-collapse:collapse;margin-bottom:0}.day-page{margin-bottom:20px;padding-bottom:10px}';
-  doc += '.week-grid th{background:#16205b;color:#fff;padding:5px 4px;text-align:center;font-size:9px;border:1px solid #0d1745}';
-  doc += '.week-grid td{border:1px solid #ddd;padding:2px 3px;vertical-align:top;min-height:18px;font-size:9px}';
-  doc += '.hour-lbl{color:#888;font-size:8px;width:36px;text-align:right;padding-right:4px;white-space:nowrap}';
-  doc += '.cell{border-radius:3px;padding:2px 3px;margin:1px 0;line-height:1.3;white-space:pre-line}';
-  doc += '.person-hd{font-size:10px;font-weight:bold}';
+  doc += '.week-grid{width:100%;border-collapse:collapse;margin-bottom:0;table-layout:fixed}.day-page{margin-bottom:24px;padding-bottom:10px}';
+  doc += '.week-grid th{background:#16205b;color:#fff;padding:7px 4px;text-align:center;font-size:10px;border:1px solid #0d1745}';
+  doc += '.week-grid td{border:1px solid #ddd;padding:3px 4px;vertical-align:middle;height:34px;font-size:10px}';
+  doc += '.hour-lbl{color:#888;font-size:9px;width:26px;min-width:26px;max-width:26px;text-align:right;padding-right:3px;white-space:nowrap}';
+  doc += '.cell{border-radius:3px;padding:3px 5px;margin:1px 0;line-height:1.4;white-space:pre-line;font-size:10px}';
+  doc += '.person-hd{font-size:11px;font-weight:bold}';
   doc += '.person-sched{font-size:8px;opacity:.7}';
-  doc += '@media print{@page{size:A4 landscape;margin:8mm}body{padding:0}button{display:none}.day-page{page-break-after:always}.day-page:last-child{page-break-after:avoid}}';
+  doc += '@media print{@page{size:A4 landscape;margin:6mm}body{padding:0;font-size:11px}button{display:none}.day-page{page-break-after:always;height:calc(100vh - 12mm);display:flex;flex-direction:column}.day-page:last-child{page-break-after:avoid}.week-grid{flex:1;height:100%}.week-grid tbody{height:100%}.week-grid tbody tr{height:calc((100% - 60px) / 12)}}';
   doc += '</style></head><body>';
 
   doc += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">';
@@ -1972,7 +1972,7 @@ function printWeekPlan(wStart, wEnd) {
 
     doc += '<div class="day-page">';
     doc += '<table class="week-grid"><thead><tr>';
-    doc += '<th class="hour-lbl" style="background:#0d1745">Hora</th>';
+    doc += '<th class="hour-lbl" style="background:#0d1745;width:26px;min-width:26px;max-width:26px">Hora</th>';
     persons.forEach(function(p) {
       var pi2 = PI_PRINT[p];
       doc += '<th style="' + colW + '">';
