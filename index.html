@@ -644,6 +644,23 @@ function callServer(action, payload, cb) {
 }
 
 function _callServerFetch(body, cb) {
+  // If google.script.run is available, try it directly (works in Apps Script context)
+  if (typeof google !== 'undefined' && google.script && google.script.run) {
+    google.script.run
+      .withSuccessHandler(function(r) {
+        setSyncing(false);
+        try { var d = typeof r === 'string' ? JSON.parse(r) : r; cb(null, d); }
+        catch(e) { cb(null, r); }
+      })
+      .withFailureHandler(function(e) {
+        setSyncing(false);
+        showToast('Erro ao contactar servidor', 'error');
+        cb(e, null);
+      })
+      .processRequest(body);
+    return;
+  }
+  // Otherwise use fetch POST (for GitHub Pages / external hosting)
   fetch(SCRIPT_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain' },
@@ -966,6 +983,7 @@ function renderPlanning() {
     html += '<button class="wk-today" onclick="planGoToday()">Hoje</button>';
   }
   html += '<button class="wk-arrow" onclick="planNextWk()">&#8250;</button>';
+  html += '<button class="wk-today" onclick="printWeekPlan(\'' + wS + '\',\'' + wE + '\')" title="Imprimir planeamento semanal" style="background:var(--navy);color:#fff;border-color:var(--navy)">🖨️ Imprimir</button>';
   html += '</div>';
 
   // ── Day selector ────────────────────────────────────────
@@ -1831,6 +1849,179 @@ function renderAbsenceList(p) {
   });
   html += '</div>';
   return html;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  IMPRESSÃO DO PLANEAMENTO SEMANAL
+// ═══════════════════════════════════════════════════════════
+function printWeekPlan(wStart, wEnd) {
+  // Build all 5 days (Mon-Fri)
+  var days = [];
+  var cur = new Date(wStart + 'T12:00:00');
+  while (isoDate(cur) <= wEnd) {
+    if (cur.getDay() !== 0 && cur.getDay() !== 6) days.push(isoDate(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  var persons = ['rn','cg','pf'];
+  var PI_PRINT = {
+    rn: { name:'Ricardo Nogueira',  sched:'06:00–14:00', color:'#3b6de8', ini:'RN' },
+    cg: { name:'Cristiana Gonçalves',sched:'08:30–17:30', color:'#16a06a', ini:'CG' },
+    pf: { name:'Pedro Fernandes',   sched:'08:30–17:30', color:'#d97316', ini:'PF' }
+  };
+
+  // Build a grid: for each person, for each day, list of slots (hour → label)
+  function getCellLabel(p, day, hh) {
+    var sc = SCHEDULES[p];
+    var pi = PERSON_INFO[p];
+    if (hh < sc.start || hh >= sc.end) return null; // outside shift
+
+    // Holiday
+    var hol = isHoliday(day);
+    if (hol) return { type:'holiday', label: hol.name };
+
+    // Absent
+    var abs = isPersonAbsent(p, day);
+    if (abs) return { type:'absent', label: absenceLabel(abs) };
+
+    // Break
+    for (var bi=0; bi<sc.breaks.length; bi++) {
+      var b = sc.breaks[bi];
+      if (hh >= Math.floor(b.s) && hh < Math.ceil(b.e)) return { type:'break', label: b.label };
+    }
+
+    // Fabril or office+task
+    if (isOnFabrilDuty(p, day, hh)) {
+      // Check for events even in fabril
+      var fevs = getEventsForDayHour(p, day, hh);
+      if (fevs.length) return { type:'event', label: fevs[0].desc + '\n' + formatTime(fevs[0].startTime) + (fevs[0].endTime ? '–'+formatTime(fevs[0].endTime) : '') };
+      return { type:'fabril', label:'Espaço Fabril' };
+    }
+
+    // Events
+    var evs = getEventsForDayHour(p, day, hh);
+    if (evs.length) return { type:'event', label: evs[0].desc + '\n' + formatTime(evs[0].startTime) + (evs[0].endTime ? '–'+formatTime(evs[0].endTime) : '') };
+
+    // Tasks
+    var alloc = getAllocatedHours(p, day, SCHEDULES[p]);
+    var task = alloc[hh];
+    if (task) return { type:'task', label: task.desc };
+
+    // Empty office → fabril
+    return { type:'fabril', label:'Espaço Fabril' };
+  }
+
+  // Build HTML for print window
+  var typeColors = {
+    fabril:  { bg:'#e8ecff', border:'#b0bcf0', text:'#16205b' },
+    task:    { bg:'#eaf0fd', border:'#b0c8f7', text:'#2a5bd7' },
+    event:   { bg:'#fff3e0', border:'#ffcc80', text:'#e65100' },
+    break:   { bg:'#f5f5f5', border:'#e0e0e0', text:'#757575', italic:true },
+    absent:  { bg:'#fff9c4', border:'#f9a825', text:'#f57f17' },
+    holiday: { bg:'#e8f5e9', border:'#a5d6a7', text:'#2e7d32' },
+  };
+
+  var hours = [];
+  for (var h=6; h<18; h++) hours.push(h);
+
+  // Figure out which hours have at least one person active
+  function hasAnyActive(hh) {
+    return persons.some(function(p) {
+      var sc = SCHEDULES[p];
+      return hh >= sc.start && hh < sc.end;
+    });
+  }
+
+  var activeHours = hours.filter(hasAnyActive);
+
+  var colW = 'width:' + Math.floor(72/persons.length) + '%';
+
+  var doc = '<!DOCTYPE html><html lang="pt"><head><meta charset="UTF-8">';
+  doc += '<title>Planeamento ' + formatDate(wStart) + ' a ' + formatDate(wEnd) + '</title>';
+  doc += '<style>';
+  doc += 'body{font-family:Arial,sans-serif;font-size:10px;margin:0;padding:10px;color:#111}';
+  doc += 'h1{font-size:14px;margin:0 0 4px;color:#16205b}';
+  doc += 'h2{font-size:11px;margin:0 0 8px;color:#555;font-weight:normal}';
+  doc += '.week-grid{width:100%;border-collapse:collapse;margin-bottom:14px}';
+  doc += '.week-grid th{background:#16205b;color:#fff;padding:5px 4px;text-align:center;font-size:9px;border:1px solid #0d1745}';
+  doc += '.week-grid td{border:1px solid #ddd;padding:2px 3px;vertical-align:top;min-height:18px;font-size:9px}';
+  doc += '.hour-lbl{color:#888;font-size:8px;width:36px;text-align:right;padding-right:4px;white-space:nowrap}';
+  doc += '.cell{border-radius:3px;padding:2px 3px;margin:1px 0;line-height:1.3;white-space:pre-line}';
+  doc += '.person-hd{font-size:10px;font-weight:bold}';
+  doc += '.person-sched{font-size:8px;opacity:.7}';
+  doc += '@media print{@page{size:A4 landscape;margin:8mm}body{padding:0}button{display:none}}';
+  doc += '</style></head><body>';
+
+  doc += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">';
+  doc += '<div>';
+  doc += '<h1>📅 Planeamento de Equipa — TecmaFoods</h1>';
+  doc += '<h2>Semana de ' + formatDate(wStart) + ' a ' + formatDate(wEnd) + '</h2>';
+  doc += '</div>';
+  doc += '<div style="text-align:right;font-size:8px;color:#888">Gerado em ' + new Date().toLocaleDateString('pt-PT') + '<br>';
+  doc += '<button onclick="window.print()" style="margin-top:4px;padding:4px 10px;background:#16205b;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:10px">🖨️ Imprimir</button></div>';
+  doc += '</div>';
+
+  // One table per day
+  days.forEach(function(day) {
+    var dayDate = new Date(day + 'T12:00:00');
+    var dayLbl = dayDate.toLocaleDateString('pt-PT', {weekday:'long',day:'numeric',month:'long'});
+    dayLbl = dayLbl.charAt(0).toUpperCase() + dayLbl.slice(1);
+
+    var hol = isHoliday(day);
+    var holStyle = hol ? 'background:#e8f5e9;color:#2e7d32' : 'background:#f0f4ff;color:#16205b';
+
+    doc += '<table class="week-grid"><thead><tr>';
+    doc += '<th class="hour-lbl" style="background:#0d1745">Hora</th>';
+    persons.forEach(function(p) {
+      var pi2 = PI_PRINT[p];
+      doc += '<th style="' + colW + '">';
+      doc += '<div class="person-hd" style="color:' + pi2.color + '">' + pi2.name + '</div>';
+      doc += '<div class="person-sched">' + pi2.sched + '</div>';
+      doc += '</th>';
+    });
+    doc += '</tr>';
+    doc += '<tr><th colspan="' + (persons.length+1) + '" style="background:#16205b;font-size:10px;text-align:left;padding:4px 8px">' + dayLbl + (hol ? ' 🎉 ' + hol.name : '') + '</th></tr>';
+    doc += '</thead><tbody>';
+
+    activeHours.forEach(function(hh) {
+      doc += '<tr>';
+      doc += '<td class="hour-lbl">' + (hh<10?'0':'')+hh+':00</td>';
+      persons.forEach(function(p) {
+        var cell = getCellLabel(p, day, hh);
+        if (!cell) {
+          doc += '<td style="background:#f9f9f9"></td>';
+          return;
+        }
+        var c = typeColors[cell.type] || typeColors.fabril;
+        var italic = c.italic ? 'font-style:italic;' : '';
+        doc += '<td><div class="cell" style="background:' + c.bg + ';border:1px solid ' + c.border + ';color:' + c.text + ';' + italic + '">' + esc(cell.label) + '</div></td>';
+      });
+      doc += '</tr>';
+    });
+
+    doc += '</tbody></table>';
+  });
+
+  // Legend
+  doc += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px;font-size:9px">';
+  var legends = [
+    {type:'fabril',label:'Espaço Fabril'},{type:'task',label:'Tarefa'},
+    {type:'event',label:'Evento'},{type:'break',label:'Pausa'},
+    {type:'absent',label:'Ausência'},{type:'holiday',label:'Feriado'}
+  ];
+  legends.forEach(function(l) {
+    var c = typeColors[l.type];
+    doc += '<div style="display:flex;align-items:center;gap:4px">';
+    doc += '<div style="width:12px;height:12px;background:'+c.bg+';border:1px solid '+c.border+';border-radius:2px"></div>';
+    doc += l.label + '</div>';
+  });
+  doc += '</div>';
+
+  doc += '</body></html>';
+
+  var win = window.open('', '_blank');
+  win.document.write(doc);
+  win.document.close();
 }
 
 </script>
