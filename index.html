@@ -366,6 +366,40 @@ textarea{resize:vertical;min-height:70px}
 
 <!-- TOAST -->
 <div id="toast-container"></div>
+<!-- MODAL CONCLUSÃO -->
+<div class="overlay hidden" id="modal-complete">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header">
+      <div class="modal-title">Concluir Tarefa</div>
+      <button class="icon-btn" onclick="closeModal('modal-complete')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="complete-id">
+      <input type="hidden" id="complete-person">
+      <div style="font-size:13px;color:var(--tx2);margin-bottom:16px" id="complete-task-name"></div>
+      <div class="row2">
+        <div class="field">
+          <label class="label">Data de conclusão</label>
+          <input type="date" id="complete-date" onchange="updateCompletePreview(null)">
+        </div>
+        <div class="field">
+          <label class="label">Hora de conclusão</label>
+          <input type="time" id="complete-time" onchange="updateCompletePreview(null)">
+        </div>
+      </div>
+      <div class="field" style="background:var(--surface2);border-radius:var(--r);padding:12px;text-align:center">
+        <div style="font-size:11px;color:var(--tx2);margin-bottom:4px">Horas de trabalho calculadas</div>
+        <div style="font-size:22px;font-weight:700;color:var(--accent)" id="complete-hours-preview">—</div>
+        <div style="font-size:11px;color:var(--tx3)" id="complete-variance-preview"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-complete')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveComplete()">✅ Concluir</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL AUSÊNCIA -->
 <div class="overlay hidden" id="modal-absence">
   <div class="modal" style="max-width:440px">
@@ -411,7 +445,18 @@ textarea{resize:vertical;min-height:70px}
 <script>
 
 // Script URL injected server-side — enables fetch() without Google session
-var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwRbGoB8tY5o1HR11ePm3LPdLB-z9i-Gp6pBPkchkNFErU4cn75gyDFSRpj6YGqXCkSGg/exec';
+// SCRIPT_URL: filled by Apps Script server, or auto-detected from page URL
+var SCRIPT_URL = (function() {
+  var tpl = '<?= scriptUrl ?>';
+  // If template was NOT filled (still contains the template syntax), use page URL
+  if (tpl.indexOf('<?') !== -1 || tpl.indexOf('scriptUrl') !== -1) {
+    // Try to get from window.location (works when served by Apps Script)
+    var loc = window.location.href;
+    // Remove query params and hash, keep the exec URL
+    return loc.split('?')[0].split('#')[0];
+  }
+  return tpl;
+})();
 
 // ═══════════════════════════════════════════════════════════
 //  STATE
@@ -938,10 +983,83 @@ function saveExtend() {
 }
 
 function doComplete(id, p) {
-  if (!confirm('Marcar como concluída?')) return;
-  callServer('completeTask', { id: id, person: p }, function(err, res) {
-    if (err || (res && res.error)) { showToast('Erro.', 'error'); return; }
-    showToast('Tarefa concluída! ' + (res.hoursSpent ? res.hoursSpent + 'h gastas.' : ''), 'success');
+  var task = findTask(id, p);
+  if (!task) return;
+  // Open completion modal with default = now
+  var now = new Date();
+  document.getElementById('complete-id').value = id;
+  document.getElementById('complete-person').value = p;
+  document.getElementById('complete-task-name').textContent = '📌 ' + task.desc;
+  document.getElementById('complete-date').value = todayISO();
+  document.getElementById('complete-time').value = ('0'+now.getHours()).slice(-2)+':'+('0'+now.getMinutes()).slice(-2);
+  updateCompletePreview(task);
+  openModal('modal-complete');
+}
+
+function updateCompletePreview(task) {
+  var dateVal = document.getElementById('complete-date').value;
+  var timeVal = document.getElementById('complete-time').value;
+  if (!dateVal || !timeVal) return;
+  var p = document.getElementById('complete-person').value;
+  // Calculate work hours from task start to chosen datetime
+  // Use SCHEDULES to count only working hours
+  if (!task) task = findTask(document.getElementById('complete-id').value, p);
+  if (!task || !task.start) return;
+  var startDT = task.start + 'T' + (SCHEDULES[p] ? ('0'+Math.floor(SCHEDULES[p].start)).slice(-2)+':00' : '00:00');
+  var endDT   = dateVal + 'T' + timeVal;
+  // Simple estimate: count days * hoursPerDay
+  var spent = estimateWorkHours(startDT, endDT, p);
+  var total  = (task.hours||0) + (task.hoursExtra||0);
+  var diff   = Math.round((spent - total) * 10) / 10;
+  document.getElementById('complete-hours-preview').textContent = spent + 'h';
+  var vEl = document.getElementById('complete-variance-preview');
+  if (diff > 0) { vEl.textContent = '+' + diff + 'h acima do previsto'; vEl.style.color = 'var(--orange)'; }
+  else if (diff < 0) { vEl.textContent = diff + 'h abaixo do previsto'; vEl.style.color = 'var(--green)'; }
+  else { vEl.textContent = 'Dentro do previsto ✓'; vEl.style.color = 'var(--green)'; }
+}
+
+function estimateWorkHours(startISO, endISO, p) {
+  // Count working hours between two ISO datetime strings
+  var sc = SCHEDULES[p];
+  if (!sc) return 0;
+  var s = new Date(startISO), e = new Date(endISO);
+  if (e <= s) return 0;
+  var total = 0, cur = new Date(s);
+  cur.setHours(0,0,0,0);
+  while (cur <= e) {
+    var dow = cur.getDay();
+    if (dow !== 0 && dow !== 6 && !isHoliday(isoDate(cur)) && !isPersonAbsent(p, isoDate(cur))) {
+      var ds = new Date(cur); ds.setHours(Math.floor(sc.start), (sc.start%1)*60, 0, 0);
+      var de = new Date(cur); de.setHours(Math.floor(sc.end),   (sc.end%1)*60,   0, 0);
+      var ws = s > ds ? s : ds;
+      var we = e < de ? e : de;
+      if (we > ws) {
+        var raw = (we - ws) / 3600000;
+        sc.breaks.forEach(function(b) {
+          var bs = new Date(cur); bs.setHours(Math.floor(b.s),(b.s%1)*60,0,0);
+          var be = new Date(cur); be.setHours(Math.floor(b.e),(b.e%1)*60,0,0);
+          var os = ws > bs ? ws : bs, oe = we < be ? we : be;
+          if (oe > os) raw -= (oe - os) / 3600000;
+        });
+        total += Math.max(0, raw);
+      }
+    }
+    cur.setDate(cur.getDate() + 1);
+  }
+  return Math.round(total * 10) / 10;
+}
+
+function saveComplete() {
+  var id     = document.getElementById('complete-id').value;
+  var p      = document.getElementById('complete-person').value;
+  var date   = document.getElementById('complete-date').value;
+  var time   = document.getElementById('complete-time').value;
+  if (!date || !time) { showToast('Preenche a data e hora de conclusão', 'error'); return; }
+  var completedAt = date + 'T' + time + ':00';
+  closeModal('modal-complete');
+  callServer('completeTask', { id: id, person: p, completedAt: completedAt }, function(err, res) {
+    if (err || (res && res.error)) { showToast('Erro ao concluir tarefa', 'error'); return; }
+    showToast('Tarefa concluída! ' + (res.hoursSpent != null ? res.hoursSpent + 'h gastas.' : ''), 'success');
     var arr = state.data.tasks[p];
     for (var i = 0; i < arr.length; i++) {
       if (arr[i].id === id) { arr[i].status = 'Concluída'; arr[i].hoursSpent = res.hoursSpent; break; }
