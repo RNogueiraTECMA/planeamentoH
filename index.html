@@ -445,18 +445,7 @@ textarea{resize:vertical;min-height:70px}
 <script>
 
 // Script URL injected server-side — enables fetch() without Google session
-// SCRIPT_URL: filled by Apps Script server, or auto-detected from page URL
-var SCRIPT_URL = (function() {
-  var tpl = '<?= scriptUrl ?>';
-  // If template was NOT filled (still contains the template syntax), use page URL
-  if (tpl.indexOf('<?') !== -1 || tpl.indexOf('scriptUrl') !== -1) {
-    // Try to get from window.location (works when served by Apps Script)
-    var loc = window.location.href;
-    // Remove query params and hash, keep the exec URL
-    return loc.split('?')[0].split('#')[0];
-  }
-  return tpl;
-})();
+var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwRbGoB8tY5o1HR11ePm3LPdLB-z9i-Gp6pBPkchkNFErU4cn75gyDFSRpj6YGqXCkSGg/exec';
 
 // ═══════════════════════════════════════════════════════════
 //  STATE
@@ -466,7 +455,7 @@ var state = {
   tab: 'items',
   planWeekOffset: 0,
   planDay: null,
-  data: { tasks: {rn:[],cg:[],pf:[]}, events: {rn:[],cg:[],pf:[]} },
+  data: { tasks: {rn:[],cg:[],pf:[]}, events: {rn:[],cg:[],pf:[]}, absences: {rn:[],cg:[],pf:[]} },
   loaded: false
 };
 
@@ -601,13 +590,13 @@ function findEvent(id, p) {
 }
 
 function findAbsence(id, p) {
-  var abs = (state.data.absences[p] || []);
+  var abs = ((state.data.absences && state.data.absences[p]) || []);
   for (var i = 0; i < abs.length; i++) { if (abs[i].id === id) return abs[i]; }
   return null;
 }
 
 function isPersonAbsent(p, day) {
-  var abs = state.data.absences[p] || [];
+  var abs = (state.data.absences && state.data.absences[p]) || [];
   for (var i = 0; i < abs.length; i++) {
     var a = abs[i];
     if (a.start && a.end && day >= a.start && day <= a.end) return a;
@@ -1948,7 +1937,7 @@ function deleteAbsenceById(id, p) {
 }
 
 function renderAbsenceList(p) {
-  var abs = (state.data.absences[p] || []).slice().sort(function(a,b){
+  var abs = ((state.data.absences && state.data.absences[p]) || []).slice().sort(function(a,b){
     return (a.start||'') <= (b.start||'') ? -1 : 1;
   });
   if (!abs.length) return '';
