@@ -1008,30 +1008,39 @@ function updateCompletePreview(task) {
 }
 
 function estimateWorkHours(startISO, endISO, p) {
-  // Count working hours between two ISO datetime strings
+  // Count only OFFICE BLOCK hours (not fabril rotation hours)
+  // This matches exactly what the planner allocates to tasks
   var sc = SCHEDULES[p];
   if (!sc) return 0;
   var s = new Date(startISO), e = new Date(endISO);
   if (e <= s) return 0;
   var total = 0, cur = new Date(s);
   cur.setHours(0,0,0,0);
+
   while (cur <= e) {
     var dow = cur.getDay();
-    if (dow !== 0 && dow !== 6 && !isHoliday(isoDate(cur)) && !isPersonAbsent(p, isoDate(cur))) {
-      var ds = new Date(cur); ds.setHours(Math.floor(sc.start), (sc.start%1)*60, 0, 0);
-      var de = new Date(cur); de.setHours(Math.floor(sc.end),   (sc.end%1)*60,   0, 0);
-      var ws = s > ds ? s : ds;
-      var we = e < de ? e : de;
-      if (we > ws) {
-        var raw = (we - ws) / 3600000;
-        sc.breaks.forEach(function(b) {
-          var bs = new Date(cur); bs.setHours(Math.floor(b.s),(b.s%1)*60,0,0);
-          var be = new Date(cur); be.setHours(Math.floor(b.e),(b.e%1)*60,0,0);
-          var os = ws > bs ? ws : bs, oe = we < be ? we : be;
-          if (oe > os) raw -= (oe - os) / 3600000;
+    var dayISO = isoDate(cur);
+    if (dow !== 0 && dow !== 6 && !isHoliday(dayISO) && !isPersonAbsent(p, dayISO)) {
+      // Get the office blocks available for this person on this day
+      // (excludes fabril rotation blocks)
+      var officeBlocks = getOfficeDayBlocks(p, dayISO);
+      officeBlocks.forEach(function(block) {
+        block.forEach(function(hh) {
+          // Each block hour = 1h slot
+          // Check if this hour overlaps with [s, e]
+          var slotStart = new Date(cur); slotStart.setHours(hh, 0, 0, 0);
+          var slotEnd   = new Date(cur); slotEnd.setHours(hh+1, 0, 0, 0);
+          // Also clip to shift start (e.g. CG starts at 08:30, not 08:00)
+          var shiftStart = new Date(cur); shiftStart.setHours(Math.floor(sc.start),(sc.start%1)*60,0,0);
+          if (slotStart < shiftStart) slotStart = shiftStart;
+          // Intersect with [s, e]
+          var ws = s > slotStart ? s : slotStart;
+          var we = e < slotEnd   ? e : slotEnd;
+          if (we > ws) {
+            total += (we - ws) / 3600000;
+          }
         });
-        total += Math.max(0, raw);
-      }
+      });
     }
     cur.setDate(cur.getDate() + 1);
   }
@@ -1046,7 +1055,11 @@ function saveComplete() {
   if (!date || !time) { showToast('Preenche a data e hora de conclusão', 'error'); return; }
   var completedAt = date + 'T' + time + ':00';
   closeModal('modal-complete');
-  callServer('completeTask', { id: id, person: p, completedAt: completedAt }, function(err, res) {
+  var task = findTask(id, p);
+  var hoursSpent = task ? estimateWorkHours(
+    (task.start||todayISO()) + 'T' + (SCHEDULES[p] ? ('0'+Math.floor(SCHEDULES[p].start)).slice(-2)+':00' : '00:00'),
+    completedAt, p) : null;
+  callServer('completeTask', { id: id, person: p, completedAt: completedAt, hoursSpent: hoursSpent }, function(err, res) {
     if (err || (res && res.error)) { showToast('Erro ao concluir tarefa', 'error'); return; }
     showToast('Tarefa concluída! ' + (res.hoursSpent != null ? res.hoursSpent + 'h gastas.' : ''), 'success');
     var arr = state.data.tasks[p];
@@ -1432,8 +1445,18 @@ function computeFabrilAssignment(day, weeklyOfficeAccum) {
   var localFabCount = { rn:0, cg:0, pf:0 }; // fabril slots assigned THIS day so far
   var fabBidx = { rn:[], cg:[], pf:[] };
 
+  // People present today (not absent, not holiday)
+  var presentToday = ['rn','cg','pf'].filter(function(p) {
+    return !isPersonAbsent(p, day) && !isHoliday(day);
+  });
+
   COVERAGE_SLOTS.forEach(function(slot) {
-    var eligible = Object.keys(slot.opts);
+    // Only include people who are actually present today
+    var eligible = Object.keys(slot.opts).filter(function(p) {
+      return presentToday.indexOf(p) !== -1;
+    });
+    // If nobody present is eligible for this slot, skip it
+    if (!eligible.length) return;
     var maxUrg = eligible.reduce(function(m,p){ return urgs[p]>m?urgs[p]:m; }, 0);
 
     var candidates = eligible.map(function(p) {
