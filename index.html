@@ -1841,9 +1841,11 @@ function checkDeadlineOverload(day) {
     tasks.forEach(function(t) {
       var totalH = (t.hours||0)+(t.hoursExtra||0);
       var wdays  = countWorkdays(t.start||day, t.end);
-      var maxH   = wdays * TOTAL_OFFICE_SLOTS[p]; // theoretical max (all office, no fabril)
+      // Use dynamic slots per day — approximate with default profile slots
+      var maxSlotsPerDay = getTotalOfficeSlotsForDay(p, day);
+      var maxH = wdays * maxSlotsPerDay;
       if (totalH > maxH) {
-        warnings.push(PI[p].name+': "'+t.desc+'" impossível ('+totalH+'h em '+wdays+' dias úteis, máx '+maxH+'h)');
+        warnings.push(PERSON_LABELS[p]+': "'+t.desc+'" pode ser difícil ('+totalH+'h em '+wdays+' dias úteis)');
       }
     });
   });
