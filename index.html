@@ -366,6 +366,96 @@ textarea{resize:vertical;min-height:70px}
 
 <!-- TOAST -->
 <div id="toast-container"></div>
+<!-- MODAL HORÁRIO TEMPORÁRIO -->
+<div class="overlay hidden" id="modal-schedule">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-schedule-title">Horário Temporário</div>
+      <button class="icon-btn" onclick="closeModal('modal-schedule')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="sched-id">
+      <input type="hidden" id="sched-person">
+      <div style="font-size:12px;color:var(--tx2);margin-bottom:14px">
+        Define um horário alternativo para um período específico. O planeamento ajusta-se automaticamente.
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label class="label">Data Início</label>
+          <input type="date" id="sched-start">
+        </div>
+        <div class="field">
+          <label class="label">Data Fim</label>
+          <input type="date" id="sched-end">
+        </div>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label class="label">Hora Início</label>
+          <input type="time" id="sched-start-hour" step="900">
+        </div>
+        <div class="field">
+          <label class="label">Hora Fim</label>
+          <input type="time" id="sched-end-hour" step="900">
+        </div>
+      </div>
+      <div class="field">
+        <label class="label">Notas (opcional)</label>
+        <input type="text" id="sched-notes" placeholder="Motivo do horário alternativo...">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-schedule')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveScheduleTemp()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL FABRIL FORÇADO -->
+<div class="overlay hidden" id="modal-forcedfab">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-forcedfab-title">Forçar Espaço Fabril</div>
+      <button class="icon-btn" onclick="closeModal('modal-forcedfab')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="ff-id">
+      <input type="hidden" id="ff-person">
+      <div style="font-size:12px;color:var(--tx2);margin-bottom:14px">
+        Força a pessoa a estar no espaço fabril durante um intervalo específico, independentemente do planeamento automático.
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label class="label">Data Início</label>
+          <input type="date" id="ff-start">
+        </div>
+        <div class="field">
+          <label class="label">Data Fim</label>
+          <input type="date" id="ff-end">
+        </div>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label class="label">Hora Início</label>
+          <input type="time" id="ff-start-hour" step="900">
+        </div>
+        <div class="field">
+          <label class="label">Hora Fim</label>
+          <input type="time" id="ff-end-hour" step="900">
+        </div>
+      </div>
+      <div class="field">
+        <label class="label">Notas (opcional)</label>
+        <input type="text" id="ff-notes" placeholder="Motivo...">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-forcedfab')">Cancelar</button>
+      <button class="btn btn-primary" style="background:#16205b" onclick="saveForcedFab()">🏭 Forçar Fabril</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL CONCLUSÃO -->
 <div class="overlay hidden" id="modal-complete">
   <div class="modal" style="max-width:400px">
@@ -455,7 +545,8 @@ var state = {
   tab: 'items',
   planWeekOffset: 0,
   planDay: null,
-  data: { tasks: {rn:[],cg:[],pf:[]}, events: {rn:[],cg:[],pf:[]}, absences: {rn:[],cg:[],pf:[]} },
+  data: { tasks:{rn:[],cg:[],pf:[]}, events:{rn:[],cg:[],pf:[]}, absences:{rn:[],cg:[],pf:[]},
+         schedules:{rn:[],cg:[],pf:[]}, forcedFab:{rn:[],cg:[],pf:[]} },
   loaded: false
 };
 
@@ -571,8 +662,12 @@ window.onload = function() {
     if (act === 'deleteTask')   { doDelete(id, p); }
     if (act === 'editEvent')    { var ev = findEvent(id, p); if (ev) openEditEvent(ev, p); }
     if (act === 'deleteEvent')  { doDeleteEvent(id, p); }
-    if (act === 'editAbsence')  { var ab = findAbsence(id, p); if (ab) openEditAbsence(ab, p); }
-    if (act === 'deleteAbsence'){ deleteAbsenceById(id, p); }
+    if (act === 'editAbsence')     { var ab = findAbsence(id, p); if (ab) openEditAbsence(ab, p); }
+    if (act === 'deleteAbsence')   { deleteAbsenceById(id, p); }
+    if (act === 'editSchedTemp')   { var st = findScheduleTemp(id, p); if (st) openEditScheduleTemp(st, p); }
+    if (act === 'deleteSchedTemp') { deleteScheduleTempById(id, p); }
+    if (act === 'editForcedFab')   { var ff2 = findForcedFab(id, p); if (ff2) openEditForcedFab(ff2, p); }
+    if (act === 'deleteForcedFab') { deleteForcedFabById(id, p); }
   });
   loadData();
 };
@@ -610,11 +705,71 @@ function absenceLabel(a) {
   return (icons[a.type_] || '📅') + ' ' + (a.type_ || 'Ausente');
 }
 
+// Returns the effective schedule for person p on a given day
+// Checks for temporary schedule overrides first
+function getScheduleForDay(p, day) {
+  var base = SCHEDULES[p];
+  var temps = (state.data.schedules && state.data.schedules[p]) || [];
+  for (var i = 0; i < temps.length; i++) {
+    var t = temps[i];
+    if (t.start && t.end && day >= t.start && day <= t.end && t.startHour && t.endHour) {
+      // Parse hours like '06:00' → 6.0, '09:00' → 9.0
+      var sh = parseFloat(t.startHour.split(':')[0]) + parseFloat(t.startHour.split(':')[1]||0)/60;
+      var eh = parseFloat(t.endHour.split(':')[0])   + parseFloat(t.endHour.split(':')[1]||0)/60;
+      if (sh < eh) {
+        // Temporary schedule: shorter shift, minimal breaks, no lunch
+        var breaks = [];
+        var duration = eh - sh;
+        // Add a break only if shift ≥ 3h
+        if (duration >= 3) {
+          var breakAt = sh + Math.floor(duration / 2);
+          breaks.push({ s: breakAt, e: breakAt + 0.25, label: 'Pausa 15min' });
+        }
+        var lbl = ('0'+Math.floor(sh)).slice(-2)+':'+('0'+Math.round((sh%1)*60)).slice(-2)+
+                  '–'+('0'+Math.floor(eh)).slice(-2)+':'+('0'+Math.round((eh%1)*60)).slice(-2)+' (temp.)';
+        return { start:sh, end:eh, breaks:breaks, hoursPerDay:duration, label:lbl, isTemp:true };
+      }
+    }
+  }
+  return base;
+}
+
+// Returns a forced-fab entry if this person is forced to fabril at hh on day
+function getForcedFab(p, day, hh) {
+  var fabs = (state.data.forcedFab && state.data.forcedFab[p]) || [];
+  for (var i = 0; i < fabs.length; i++) {
+    var f = fabs[i];
+    if (!f.start || !f.end) continue;
+    if (day < f.start || day > f.end) continue;
+    // Check time range
+    var sh = f.startHour ? (parseFloat(f.startHour.split(':')[0]) + parseFloat(f.startHour.split(':')[1]||0)/60) : 0;
+    var eh = f.endHour   ? (parseFloat(f.endHour.split(':')[0])   + parseFloat(f.endHour.split(':')[1]||0)/60)   : 24;
+    if (hh >= sh && hh < eh) return f;
+  }
+  return null;
+}
+
+function findScheduleTemp(id, p) {
+  var arr = (state.data.schedules && state.data.schedules[p]) || [];
+  for (var i=0;i<arr.length;i++) { if (arr[i].id===id) return arr[i]; }
+  return null;
+}
+function findForcedFab(id, p) {
+  var arr = (state.data.forcedFab && state.data.forcedFab[p]) || [];
+  for (var i=0;i<arr.length;i++) { if (arr[i].id===id) return arr[i]; }
+  return null;
+}
+
 function onDataLoaded(result) {
   setSyncing(false);
   try {
     var d = typeof result === 'string' ? JSON.parse(result) : result;
-    if (d && d.tasks) { state.data = d; if (!d.absences) state.data.absences = {rn:[],cg:[],pf:[]}; }
+    if (d && d.tasks) {
+      state.data = d;
+      if (!d.absences)   state.data.absences   = {rn:[],cg:[],pf:[]};
+      if (!d.schedules)  state.data.schedules   = {rn:[],cg:[],pf:[]};
+      if (!d.forcedFab)  state.data.forcedFab   = {rn:[],cg:[],pf:[]};
+    }
   } catch(e) {}
   if (!state.planDay) state.planDay = isoDate(new Date());
   state.loaded = true;
@@ -789,6 +944,8 @@ function renderItems() {
   html += '<button class="btn btn-primary btn-sm" onclick="openNewTask()">+ Nova Tarefa</button>';
   html += '<button class="btn btn-outline btn-sm" onclick="openNewEvent()">+ Evento</button>';
   html += '<button class="btn btn-outline btn-sm" onclick="openNewAbsence()">🏠 Ausência</button>';
+  html += '<button class="btn btn-outline btn-sm" onclick="openNewScheduleTemp()">⏰ Horário</button>';
+  html += '<button class="btn btn-outline btn-sm" onclick="openNewForcedFab()">🏭 Fabril</button>';
   html += '</div></div>';
   if (todayHoliday) {
     html += '<div style="background:#e8f5e9;border:1px solid #4caf50;border-radius:8px;padding:10px 14px;margin-bottom:14px;color:#2e7d32;font-size:13px">';
@@ -824,6 +981,7 @@ function renderItems() {
     evPast.forEach(function(ev) { html += renderEventItem(ev, p); });
   }
   html += renderAbsenceList(p);
+  html += renderScheduleList(p);
   document.getElementById('tab-items').innerHTML = html;
 }
 function renderTasks() {
@@ -1129,8 +1287,10 @@ function renderPlanning() {
   ['rn','cg','pf'].forEach(function(p) {
     var pi = PERSON_INFO[p];
     html += '<div class="pg-hd"><div class="pav ' + pi.avCls + '" style="width:22px;height:22px;font-size:10px;flex-shrink:0">' + pi.ini + '</div>';
+    var effSched = getScheduleForDay(p, state.planDay);
+    var schedLbl = effSched.isTemp ? effSched.label : pi.sched;
     html += '<div><div style="font-size:12px;font-weight:600">' + pi.firstName + '</div>';
-    html += '<div style="font-size:10px;opacity:.55">' + pi.sched + '</div></div></div>';
+    html += '<div style="font-size:10px;opacity:.55;color:' + (effSched.isTemp?'var(--orange)':'inherit') + '">' + schedLbl + '</div></div></div>';
   });
 
   var nowH = new Date().getHours() + new Date().getMinutes() / 60;
@@ -1140,7 +1300,7 @@ function renderPlanning() {
     html += '<div class="pg-time">' + (hh < 10 ? '0' : '') + hh + ':00</div>';
     ['rn','cg','pf'].forEach(function(p) {
       var pi = PERSON_INFO[p];
-      var sc = SCHEDULES[p];
+      var sc = getScheduleForDay(p, state.planDay); // uses temp schedule if active
       var cellCls = 'pg-cell';
       var content = '';
 
@@ -1180,6 +1340,18 @@ function renderPlanning() {
           cellCls += ' pause';
           content += '<span class="pg-chip pause-lbl">☕ ' + breakInfo.label + '</span>';
           // Events can overlap with break hours — always show them
+          getEventsForDayHour(p, state.planDay, hh).forEach(function(ev) {
+            var evSt = formatTime(ev.startTime); var evEt = formatTime(ev.endTime);
+            var evTime = evSt + (evEt ? '–'+evEt : '');
+            var evLabel = (evTime ? evTime + ' ' : '') + esc(ev.desc.length > 16 ? ev.desc.substring(0,16)+'…' : ev.desc);
+            content += '<span class="pg-chip event" title="' + esc(ev.desc) + ' (' + evTime + ')">📅 ' + evLabel + '</span>';
+          });
+        } else if (getForcedFab(p, state.planDay, hh)) {
+          // Manually forced to fabril
+          cellCls += ' work';
+          var ff = getForcedFab(p, state.planDay, hh);
+          content += '<span class="pg-chip fabril" title="Fabril forçado' + (ff.notes ? ': '+esc(ff.notes) : '') + '">🏭 Fabril (manual)</span>';
+          // Events still shown even if forced fabril
           getEventsForDayHour(p, state.planDay, hh).forEach(function(ev) {
             var evSt = formatTime(ev.startTime); var evEt = formatTime(ev.endTime);
             var evTime = evSt + (evEt ? '–'+evEt : '');
@@ -1639,11 +1811,13 @@ function getAllocatedHours(p, day, sc) {
 }
 
 function getTasksForDayHour(p, day, hh, sc) {
-  if (hh<sc.start || hh>=sc.end) return [];
-  for (var bi=0; bi<sc.breaks.length; bi++){
-    var b=sc.breaks[bi];
+  var effSc = getScheduleForDay(p, day);
+  if (hh<effSc.start || hh>=effSc.end) return [];
+  for (var bi=0; bi<effSc.breaks.length; bi++){
+    var b=effSc.breaks[bi];
     if (hh>=Math.floor(b.s) && hh<Math.ceil(b.e)) return [];
   }
+  if (getForcedFab(p, day, hh)) return []; // forced fabril overrides tasks
   if (isOnFabrilDuty(p, day, hh)) return [];
   var alloc = getAllocatedHours(p, day, sc);
   return alloc[hh] ? [alloc[hh]] : [];
@@ -2150,6 +2324,162 @@ function printWeekPlan(wStart, wEnd) {
   var win = window.open('', '_blank');
   win.document.write(doc);
   win.document.close();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  HORÁRIO TEMPORÁRIO
+// ═══════════════════════════════════════════════════════════
+function openNewScheduleTemp() {
+  var p = state.person;
+  document.getElementById('sched-id').value = '';
+  document.getElementById('sched-person').value = p;
+  document.getElementById('sched-start').value = todayISO();
+  document.getElementById('sched-end').value = todayISO();
+  document.getElementById('sched-start-hour').value = '06:00';
+  document.getElementById('sched-end-hour').value = '09:00';
+  document.getElementById('sched-notes').value = '';
+  document.getElementById('modal-schedule-title').textContent = 'Horário Temporário — ' + PERSON_LABELS[p];
+  openModal('modal-schedule');
+}
+function openEditScheduleTemp(s, p) {
+  document.getElementById('sched-id').value = s.id;
+  document.getElementById('sched-person').value = p;
+  document.getElementById('sched-start').value = s.start||'';
+  document.getElementById('sched-end').value = s.end||'';
+  document.getElementById('sched-start-hour').value = s.startHour||'';
+  document.getElementById('sched-end-hour').value = s.endHour||'';
+  document.getElementById('sched-notes').value = s.notes||'';
+  document.getElementById('modal-schedule-title').textContent = 'Editar Horário Temporário';
+  openModal('modal-schedule');
+}
+function saveScheduleTemp() {
+  var id    = document.getElementById('sched-id').value;
+  var p     = document.getElementById('sched-person').value;
+  var start = document.getElementById('sched-start').value;
+  var end   = document.getElementById('sched-end').value;
+  var sh    = document.getElementById('sched-start-hour').value;
+  var eh    = document.getElementById('sched-end-hour').value;
+  var notes = document.getElementById('sched-notes').value;
+  if (!start||!sh||!eh) { showToast('Preenche todos os campos obrigatórios', 'error'); return; }
+  if (!end || end < start) end = start;
+  var action = id ? 'editScheduleTemp' : 'addScheduleTemp';
+  var payload = { person:p, start:start, end:end, startHour:sh, endHour:eh, notes:notes };
+  if (id) payload.id = id;
+  closeModal('modal-schedule');
+  callServer(action, payload, function(err, res) {
+    if (err||(res&&res.error)) { showToast('Erro ao guardar', 'error'); return; }
+    showToast('Horário temporário guardado ✓', 'success');
+    invalidateFabrilCache();
+    loadData();
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  FABRIL FORÇADO
+// ═══════════════════════════════════════════════════════════
+function openNewForcedFab() {
+  var p = state.person;
+  document.getElementById('ff-id').value = '';
+  document.getElementById('ff-person').value = p;
+  document.getElementById('ff-start').value = todayISO();
+  document.getElementById('ff-end').value = todayISO();
+  document.getElementById('ff-start-hour').value = '';
+  document.getElementById('ff-end-hour').value = '';
+  document.getElementById('ff-notes').value = '';
+  document.getElementById('modal-forcedfab-title').textContent = '🏭 Forçar Fabril — ' + PERSON_LABELS[p];
+  openModal('modal-forcedfab');
+}
+function openEditForcedFab(f, p) {
+  document.getElementById('ff-id').value = f.id;
+  document.getElementById('ff-person').value = p;
+  document.getElementById('ff-start').value = f.start||'';
+  document.getElementById('ff-end').value = f.end||'';
+  document.getElementById('ff-start-hour').value = f.startHour||'';
+  document.getElementById('ff-end-hour').value = f.endHour||'';
+  document.getElementById('ff-notes').value = f.notes||'';
+  document.getElementById('modal-forcedfab-title').textContent = 'Editar Fabril Forçado';
+  openModal('modal-forcedfab');
+}
+function saveForcedFab() {
+  var id    = document.getElementById('ff-id').value;
+  var p     = document.getElementById('ff-person').value;
+  var start = document.getElementById('ff-start').value;
+  var end   = document.getElementById('ff-end').value;
+  var sh    = document.getElementById('ff-start-hour').value;
+  var eh    = document.getElementById('ff-end-hour').value;
+  var notes = document.getElementById('ff-notes').value;
+  if (!start||!sh||!eh) { showToast('Preenche todos os campos obrigatórios', 'error'); return; }
+  if (!end || end < start) end = start;
+  var action = id ? 'editForcedFab' : 'addForcedFab';
+  var payload = { person:p, start:start, end:end, startHour:sh, endHour:eh, notes:notes };
+  if (id) payload.id = id;
+  closeModal('modal-forcedfab');
+  callServer(action, payload, function(err, res) {
+    if (err||(res&&res.error)) { showToast('Erro ao guardar', 'error'); return; }
+    showToast('Fabril forçado registado ✓', 'success');
+    invalidateFabrilCache();
+    loadData();
+  });
+}
+function deleteScheduleTempById(id, p) {
+  if (!confirm('Eliminar horário temporário?')) return;
+  callServer('deleteScheduleTemp', {id:id, person:p}, function(err, res) {
+    if (err||(res&&res.error)) { showToast('Erro', 'error'); return; }
+    showToast('Removido ✓', 'success');
+    invalidateFabrilCache();
+    loadData();
+  });
+}
+function deleteForcedFabById(id, p) {
+  if (!confirm('Eliminar fabril forçado?')) return;
+  callServer('deleteForcedFab', {id:id, person:p}, function(err, res) {
+    if (err||(res&&res.error)) { showToast('Erro', 'error'); return; }
+    showToast('Removido ✓', 'success');
+    invalidateFabrilCache();
+    loadData();
+  });
+}
+
+function renderScheduleList(p) {
+  var scheds = ((state.data.schedules && state.data.schedules[p]) || [])
+    .slice().sort(function(a,b){ return (a.start||'') <= (b.start||'') ? -1 : 1; });
+  var fabs   = ((state.data.forcedFab  && state.data.forcedFab[p])  || [])
+    .slice().sort(function(a,b){ return (a.start||'') <= (b.start||'') ? -1 : 1; });
+  if (!scheds.length && !fabs.length) return '';
+  var html = '<div style="margin-top:20px">';
+
+  if (scheds.length) {
+    html += '<div style="font-size:12px;font-weight:600;color:var(--tx2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">⏰ Horários Temporários</div>';
+    scheds.forEach(function(s) {
+      var period = formatDate(s.start) + (s.end && s.end !== s.start ? ' – ' + formatDate(s.end) : '');
+      var hours  = s.startHour + '–' + s.endHour;
+      html += '<div class="event-item">';
+      html += '<div class="event-time"><div style="color:var(--orange);font-weight:600">' + hours + '</div><div style="font-size:11px;color:var(--tx2)">' + period + '</div></div>';
+      html += '<div class="event-desc">' + esc(s.notes || 'Horário temporário') + '</div>';
+      html += '<div style="display:flex;gap:6px">';
+      html += '<button class="icon-btn" data-act="editSchedTemp" data-id="' + s.id + '" data-p="' + p + '">✏️</button>';
+      html += '<button class="icon-btn" data-act="deleteSchedTemp" data-id="' + s.id + '" data-p="' + p + '">🗑️</button>';
+      html += '</div></div>';
+    });
+  }
+
+  if (fabs.length) {
+    html += '<div style="font-size:12px;font-weight:600;color:var(--tx2);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 8px">🏭 Fabril Forçado</div>';
+    fabs.forEach(function(f) {
+      var period = formatDate(f.start) + (f.end && f.end !== f.start ? ' – ' + formatDate(f.end) : '');
+      var hours  = f.startHour + '–' + f.endHour;
+      html += '<div class="event-item">';
+      html += '<div class="event-time"><div style="color:var(--navy);font-weight:600">' + hours + '</div><div style="font-size:11px;color:var(--tx2)">' + period + '</div></div>';
+      html += '<div class="event-desc">' + esc(f.notes || 'Fabril manual') + '</div>';
+      html += '<div style="display:flex;gap:6px">';
+      html += '<button class="icon-btn" data-act="editForcedFab" data-id="' + f.id + '" data-p="' + p + '">✏️</button>';
+      html += '<button class="icon-btn" data-act="deleteForcedFab" data-id="' + f.id + '" data-p="' + p + '">🗑️</button>';
+      html += '</div></div>';
+    });
+  }
+
+  html += '</div>';
+  return html;
 }
 
 </script>
