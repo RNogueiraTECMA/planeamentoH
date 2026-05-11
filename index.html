@@ -2,6 +2,7 @@
 <html lang="pt">
 <head>
 <meta charset="UTF-8">
+  <link rel="icon" href="data:,">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <base target="_top">
 <title>Planeamento de Equipa</title>
@@ -740,9 +741,12 @@ function getForcedFab(p, day, hh) {
     var f = fabs[i];
     if (!f.start || !f.end) continue;
     if (day < f.start || day > f.end) continue;
-    // Check time range
-    var sh = f.startHour ? (parseFloat(f.startHour.split(':')[0]) + parseFloat(f.startHour.split(':')[1]||0)/60) : 0;
-    var eh = f.endHour   ? (parseFloat(f.endHour.split(':')[0])   + parseFloat(f.endHour.split(':')[1]||0)/60)   : 24;
+    // Use formatTime to safely parse hours (handles both '06:00' and epoch-1899 strings)
+    var shStr = f.startHour ? (formatTime(f.startHour) || f.startHour) : '00:00';
+    var ehStr = f.endHour   ? (formatTime(f.endHour)   || f.endHour)   : '24:00';
+    var shParts = shStr.split(':'), ehParts = ehStr.split(':');
+    var sh = parseFloat(shParts[0]) + parseFloat(shParts[1]||0)/60;
+    var eh = parseFloat(ehParts[0]) + parseFloat(ehParts[1]||0)/60;
     if (hh >= sh && hh < eh) return f;
   }
   return null;
@@ -1537,9 +1541,11 @@ function getProfile(p, day) {
   for (var i=0; i<temps.length; i++) {
     var t = temps[i];
     if (t.start && t.end && day>=t.start && day<=t.end && t.startHour && t.endHour) {
-      var sh = parseInt(t.startHour.split(':')[0]);
-      // If start hour is 6 → 'early' profile; otherwise 'normal'
-      return sh <= 6 ? 'early' : 'normal';
+      // Use formatTime to safely parse the hour (handles both '06:00' and epoch-1899 strings)
+      var shStr = formatTime(t.startHour) || t.startHour;
+      var sh = parseInt(shStr.split(':')[0]);
+      // If start hour <= 6 → 'early' profile (06:00–14:00); otherwise 'normal'
+      return (!isNaN(sh) && sh <= 6) ? 'early' : 'normal';
     }
   }
   return DEFAULT_PROFILE[p] || 'normal';
@@ -1547,8 +1553,8 @@ function getProfile(p, day) {
 
 function getScheduleForDay(p, day) {
   var profile = getProfile(p, day);
-  var sc = SCHEDULES_BY_PROFILE[profile];
-  if (getProfile(p,day) !== DEFAULT_PROFILE[p]) sc = Object.assign({}, sc, {isTemp:true});
+  var sc = SCHEDULES_BY_PROFILE[profile] || SCHEDULES_BY_PROFILE['normal'];
+  if (profile !== DEFAULT_PROFILE[p]) sc = Object.assign({}, sc, {isTemp:true});
   return sc;
 }
 
