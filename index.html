@@ -389,16 +389,15 @@ textarea{resize:vertical;min-height:70px}
           <input type="date" id="sched-end">
         </div>
       </div>
-      <div class="row2">
-        <div class="field">
-          <label class="label">Hora Início</label>
-          <input type="time" id="sched-start-hour" step="900">
-        </div>
-        <div class="field">
-          <label class="label">Hora Fim</label>
-          <input type="time" id="sched-end-hour" step="900">
-        </div>
+      <div class="field">
+        <label class="label">Tipo de Horário</label>
+        <select id="sched-type" onchange="updateSchedHours()">
+          <option value="normal">🕗 Normal — 08:30 às 17:30</option>
+          <option value="early">🌅 Madrugada — 06:00 às 14:00</option>
+        </select>
       </div>
+      <input type="hidden" id="sched-start-hour" value="08:30">
+      <input type="hidden" id="sched-end-hour" value="17:30">
       <div class="field">
         <label class="label">Notas (opcional)</label>
         <input type="text" id="sched-notes" placeholder="Motivo do horário alternativo...">
@@ -1723,9 +1722,6 @@ function computeFabrilAssignment(day, weeklyOfficeAccum) {
       seen[e.p] = true;
       return true;
     });
-    var maxUrg = eligible.reduce(function(m,p){ return urgs[p]>m?urgs[p]:m; }, 0);
-
-    var eligiblePeople = eligible.map(function(e){ return e.p; });
     var maxUrg = eligible.reduce(function(m,e){ return urgs[e.p]>m?urgs[e.p]:m; }, 0);
 
     var candidates = eligible.map(function(e) {
@@ -2438,15 +2434,29 @@ function printWeekPlan(wStart, wEnd) {
 // ═══════════════════════════════════════════════════════════
 //  HORÁRIO TEMPORÁRIO
 // ═══════════════════════════════════════════════════════════
+function updateSchedHours() {
+  var type = document.getElementById('sched-type').value;
+  if (type === 'early') {
+    document.getElementById('sched-start-hour').value = '06:00';
+    document.getElementById('sched-end-hour').value = '14:00';
+  } else {
+    document.getElementById('sched-start-hour').value = '08:30';
+    document.getElementById('sched-end-hour').value = '17:30';
+  }
+}
+
 function openNewScheduleTemp() {
   var p = state.person;
+  // Detect current default profile to pre-select opposite
+  var currentProfile = DEFAULT_PROFILE[p] || 'normal';
+  var suggestType = currentProfile === 'early' ? 'normal' : 'early';
   document.getElementById('sched-id').value = '';
   document.getElementById('sched-person').value = p;
   document.getElementById('sched-start').value = todayISO();
   document.getElementById('sched-end').value = todayISO();
-  document.getElementById('sched-start-hour').value = '06:00';
-  document.getElementById('sched-end-hour').value = '09:00';
+  document.getElementById('sched-type').value = suggestType;
   document.getElementById('sched-notes').value = '';
+  updateSchedHours();
   document.getElementById('modal-schedule-title').textContent = 'Horário Temporário — ' + PERSON_LABELS[p];
   openModal('modal-schedule');
 }
@@ -2455,8 +2465,11 @@ function openEditScheduleTemp(s, p) {
   document.getElementById('sched-person').value = p;
   document.getElementById('sched-start').value = s.start||'';
   document.getElementById('sched-end').value = s.end||'';
-  document.getElementById('sched-start-hour').value = s.startHour||'';
-  document.getElementById('sched-end-hour').value = s.endHour||'';
+  // Detect type from startHour
+  var sh = parseInt((s.startHour||'08').split(':')[0]);
+  document.getElementById('sched-type').value = sh <= 6 ? 'early' : 'normal';
+  document.getElementById('sched-start-hour').value = s.startHour||'08:30';
+  document.getElementById('sched-end-hour').value = s.endHour||'17:30';
   document.getElementById('sched-notes').value = s.notes||'';
   document.getElementById('modal-schedule-title').textContent = 'Editar Horário Temporário';
   openModal('modal-schedule');
