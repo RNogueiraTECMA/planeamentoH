@@ -1152,7 +1152,8 @@ function updateCompletePreview(task) {
   // Use SCHEDULES to count only working hours
   if (!task) task = findTask(document.getElementById('complete-id').value, p);
   if (!task || !task.start) return;
-  var startDT = task.start + 'T' + (SCHEDULES[p] ? ('0'+Math.floor(SCHEDULES[p].start)).slice(-2)+':00' : '00:00');
+  var _sc = getScheduleForDay(p, task.start||todayISO());
+  var startDT = task.start + 'T' + (_sc ? ('0'+Math.floor(_sc.start)).slice(-2)+':00' : '00:00');
   var endDT   = dateVal + 'T' + timeVal;
   // Simple estimate: count days * hoursPerDay
   var spent = estimateWorkHours(startDT, endDT, p);
@@ -1168,8 +1169,6 @@ function updateCompletePreview(task) {
 function estimateWorkHours(startISO, endISO, p) {
   // Count only OFFICE BLOCK hours (not fabril rotation hours)
   // This matches exactly what the planner allocates to tasks
-  var sc = SCHEDULES[p];
-  if (!sc) return 0;
   var s = new Date(startISO), e = new Date(endISO);
   if (e <= s) return 0;
   var total = 0, cur = new Date(s);
@@ -1179,8 +1178,8 @@ function estimateWorkHours(startISO, endISO, p) {
     var dow = cur.getDay();
     var dayISO = isoDate(cur);
     if (dow !== 0 && dow !== 6 && !isHoliday(dayISO) && !isPersonAbsent(p, dayISO)) {
-      // Get the office blocks available for this person on this day
-      // (excludes fabril rotation blocks)
+      var sc = getScheduleForDay(p, dayISO);
+      if (!sc) { cur.setDate(cur.getDate()+1); continue; }
       var officeBlocks = getOfficeDayBlocks(p, dayISO);
       officeBlocks.forEach(function(block) {
         block.forEach(function(hh) {
@@ -1214,8 +1213,9 @@ function saveComplete() {
   var completedAt = date + 'T' + time + ':00';
   closeModal('modal-complete');
   var task = findTask(id, p);
+  var _scSave = task ? getScheduleForDay(p, task.start||todayISO()) : null;
   var hoursSpent = task ? estimateWorkHours(
-    (task.start||todayISO()) + 'T' + (SCHEDULES[p] ? ('0'+Math.floor(SCHEDULES[p].start)).slice(-2)+':00' : '00:00'),
+    (task.start||todayISO()) + 'T' + (_scSave ? ('0'+Math.floor(_scSave.start)).slice(-2)+':00' : '00:00'),
     completedAt, p) : null;
   callServer('completeTask', { id: id, person: p, completedAt: completedAt, hoursSpent: hoursSpent }, function(err, res) {
     if (err || (res && res.error)) { showToast('Erro ao concluir tarefa', 'error'); return; }
@@ -1306,7 +1306,17 @@ function renderPlanning() {
 
       var absToday = isPersonAbsent(p, state.planDay);
       var holidayToday = isHoliday(state.planDay);
-      if (holidayToday && hh >= sc.start && hh < sc.end) {
+      var forcedFabToday = getForcedFab(p, state.planDay, hh);
+      // FORCED FAB: override everything (within working hours)
+      if (forcedFabToday && hh >= sc.start && hh < sc.end && !absToday && !holidayToday) {
+        cellCls += ' work';
+        content += '<span class="pg-chip fabril" title="Fabril manual' + (forcedFabToday.notes ? ': '+esc(forcedFabToday.notes) : '') + '">🏭 Fabril (manual)</span>';
+        getEventsForDayHour(p, state.planDay, hh).forEach(function(ev) {
+          var evSt = formatTime(ev.startTime); var evEt = formatTime(ev.endTime);
+          var evTime = evSt + (evEt ? '–'+evEt : '');
+          content += '<span class="pg-chip event">📅 ' + (evTime?evTime+' ':'') + esc(ev.desc.length>14?ev.desc.substring(0,14)+'…':ev.desc) + '</span>';
+        });
+      } else if (holidayToday && hh >= sc.start && hh < sc.end) {
         // Public holiday — show holiday chip
         cellCls += ' off';
         if (hh === Math.floor(sc.start)) {
@@ -1340,18 +1350,6 @@ function renderPlanning() {
           cellCls += ' pause';
           content += '<span class="pg-chip pause-lbl">☕ ' + breakInfo.label + '</span>';
           // Events can overlap with break hours — always show them
-          getEventsForDayHour(p, state.planDay, hh).forEach(function(ev) {
-            var evSt = formatTime(ev.startTime); var evEt = formatTime(ev.endTime);
-            var evTime = evSt + (evEt ? '–'+evEt : '');
-            var evLabel = (evTime ? evTime + ' ' : '') + esc(ev.desc.length > 16 ? ev.desc.substring(0,16)+'…' : ev.desc);
-            content += '<span class="pg-chip event" title="' + esc(ev.desc) + ' (' + evTime + ')">📅 ' + evLabel + '</span>';
-          });
-        } else if (getForcedFab(p, state.planDay, hh)) {
-          // Manually forced to fabril
-          cellCls += ' work';
-          var ff = getForcedFab(p, state.planDay, hh);
-          content += '<span class="pg-chip fabril" title="Fabril forçado' + (ff.notes ? ': '+esc(ff.notes) : '') + '">🏭 Fabril (manual)</span>';
-          // Events still shown even if forced fabril
           getEventsForDayHour(p, state.planDay, hh).forEach(function(ev) {
             var evSt = formatTime(ev.startTime); var evEt = formatTime(ev.endTime);
             var evTime = evSt + (evEt ? '–'+evEt : '');
@@ -1415,7 +1413,7 @@ function renderPlanning() {
   html += '<div class="day-sum">';
   ['rn','cg','pf'].forEach(function(p) {
     var pi = PERSON_INFO[p];
-    var sc = SCHEDULES[p];
+    var sc = getScheduleForDay(p, state.planDay);
     var dayTasks = getDayTasks(p, state.planDay);
     var dayEvs   = getDayEvents(p, state.planDay);
     html += '<div class="ds-card">';
@@ -1504,41 +1502,129 @@ function getDayEvents(p, day) {
 //   Higher = more urgent = should stay in office
 
 // ═══════════════════════════════════════════════════════════════
-//  SISTEMA DE PLANEAMENTO — regras completas
+//  SISTEMA DE PLANEAMENTO — BLOCOS DINÂMICOS POR HORÁRIO
 // ═══════════════════════════════════════════════════════════════
 //
-//  BLOCOS DE ESCRITÓRIO (intervalos completos entre pausas):
-//    Ricardo:          [10], [12,13]            (3 slots/dia)
-//    Cristiana/Pedro:  [8,9,10],[12],[14,15],[17] (7 slots/dia)
+//  DOIS PERFIS DE HORÁRIO:
+//    'early'  → 06:00-14:00 (como Ricardo por defeito)
+//               Fabril fixo 06-09, blocos escritório: [10],[12,13]
+//    'normal' → 08:30-17:30 (como Cristiana/Pedro por defeito)
+//               Sem fabril fixo, blocos: [8,9,10],[12],[14,15],[17]
 //
-//  4 SLOTS DE COBERTURA OBRIGATÓRIA (fabril deve ter sempre 1 pessoa):
-//    S1 [8,9,10]  → CG ou PF (RN em pausa às 9, chega às 9:15)
-//    S2 [12,13]   → RN, CG ou PF  (RN perde [12,13]; CG/PF perdem [12])
-//    S3 [14,15]   → CG ou PF
-//    S4 [17]      → CG ou PF
-//
-//  REGRAS:
-//    1. Sempre ≥1 pessoa no fabril quando >1 pessoa a trabalhar
-//    2. Só 2 estados em horário de trabalho: escritório ou fabril
-//    3. Escritório = bloco completo entre pausas (nunca parcial)
-//    4. Horas semanais de escritório equilibradas
-//    5. Eventos forçam escritório no bloco que os engloba
-//    6. Aviso se tarefas impossíveis de concluir no prazo
+//  Qualquer pessoa pode ter horário temporário 'early'.
+//  O planeamento recalcula tudo dinamicamente por dia.
 
-var OFFICE_BLOCKS = {
-  rn: [[10], [12, 13]],
-  cg: [[8,9,10], [12], [14,15], [17]],
-  pf: [[8,9,10], [12], [14,15], [17]]
+// Blocos de escritório para cada perfil
+var OFFICE_BLOCKS_BY_PROFILE = {
+  early:  [[10], [12, 13]],
+  normal: [[8,9,10], [12], [14,15], [17]]
+};
+var TOTAL_SLOTS_BY_PROFILE = { early: 3, normal: 7 };
+
+// Schedules base por perfil
+var SCHEDULES_BY_PROFILE = {
+  early:  { start:6,   end:14,  hoursPerDay:7.5, label:'06:00–14:00',
+            breaks:[{s:9,e:9.25,label:'Pausa 15min'},{s:11,e:11.25,label:'Pausa 15min'}] },
+  normal: { start:8.5, end:17.5,hoursPerDay:7.5, label:'08:30–17:30',
+            breaks:[{s:11,e:11.25,label:'Pausa 15min'},{s:13,e:14,label:'Almoço 1h'},{s:16,e:16.25,label:'Pausa 15min'}] }
 };
 
-var TOTAL_OFFICE_SLOTS = { rn: 3, cg: 7, pf: 7 }; // sum of all block lengths per person
+// Default profiles per person
+var DEFAULT_PROFILE = { rn:'early', cg:'normal', pf:'normal' };
 
-var COVERAGE_SLOTS = [
-  { hours:[8,9,10], opts:{ cg:0, pf:0 }     },  // S1
-  { hours:[12,13],  opts:{ rn:1, cg:1, pf:1 }},  // S2 — RN loses [12,13], CG/PF lose [12]
-  { hours:[14,15],  opts:{ cg:2, pf:2 }     },  // S3
-  { hours:[17],     opts:{ cg:3, pf:3 }     }   // S4
-];
+// Get effective profile for a person on a specific day
+function getProfile(p, day) {
+  var temps = (state.data.schedules && state.data.schedules[p]) || [];
+  for (var i=0; i<temps.length; i++) {
+    var t = temps[i];
+    if (t.start && t.end && day>=t.start && day<=t.end && t.startHour && t.endHour) {
+      var sh = parseInt(t.startHour.split(':')[0]);
+      // If start hour is 6 → 'early' profile; otherwise 'normal'
+      return sh <= 6 ? 'early' : 'normal';
+    }
+  }
+  return DEFAULT_PROFILE[p] || 'normal';
+}
+
+function getScheduleForDay(p, day) {
+  var profile = getProfile(p, day);
+  var sc = SCHEDULES_BY_PROFILE[profile];
+  if (getProfile(p,day) !== DEFAULT_PROFILE[p]) sc = Object.assign({}, sc, {isTemp:true});
+  return sc;
+}
+
+function getOfficeBlocksForDay(p, day) {
+  return OFFICE_BLOCKS_BY_PROFILE[getProfile(p, day)];
+}
+
+function getTotalOfficeSlotsForDay(p, day) {
+  return TOTAL_SLOTS_BY_PROFILE[getProfile(p, day)];
+}
+
+// Is this person in their fixed fabril window for this hour?
+// Everyone on 'early' profile has fixed fabril 06:00-09:00
+function isFixedFabril(p, day, hh) {
+  return getProfile(p, day) === 'early' && hh >= 6 && hh < 9;
+}
+
+// Build coverage slots dynamically based on who is on which schedule today
+// Rules:
+//   • 06-09: ALL people on 'early' profile are in fixed fabril
+//   • For remaining hours, we need ≥1 person in fabril at all times
+//   • h=9,10: early people available (after 09:15 break); normal people start 08:30
+//   • Coverage slots cover hours where ≥2 people are working
+function buildCoverageSlotsForDay(day, presentPeople) {
+  // Classify each present person's profile
+  var early  = presentPeople.filter(function(p){ return getProfile(p,day)==='early'; });
+  var normal = presentPeople.filter(function(p){ return getProfile(p,day)==='normal'; });
+
+  var slots = [];
+
+  // Slot covering h=8,9,10:
+  // Normal people work 08:30+, early people join at 09:15 (h=9 is their break)
+  // At h=8,9: only normal people active → need 1 of them in fabril
+  // At h=10: both early and normal active → any of them can cover
+  if (normal.length > 0) {
+    // h=8,9 (only normal people present): 1 normal covers
+    slots.push({ hours:[8,9], eligible: normal.map(function(p){return {p:p,bidx:0};}) });
+    // h=10: all present (early out of break) — early uses bidx=0 ([10]), normal uses bidx=0 ([8,9,10])
+    var h10elig = [];
+    early.forEach(function(p){ h10elig.push({p:p,bidx:0}); });   // early block [10] = bidx 0
+    normal.forEach(function(p){ h10elig.push({p:p,bidx:0}); });  // normal block [8,9,10] = bidx 0
+    slots.push({ hours:[10], eligible: h10elig });
+  } else if (early.length >= 2) {
+    // Only early people (rare): they're all in fixed fabril 06-09, h=10 onwards in office
+    // No coverage slot needed for 08-10 (nobody working normally)
+    // h=10: need coverage if ≥2 early present
+    if (early.length >= 2) {
+      slots.push({ hours:[10], eligible: early.map(function(p){return {p:p,bidx:0};}) });
+    }
+  }
+
+  // h=12: all present (after 11:xx breaks)
+  // early uses bidx=1 ([12,13]), normal uses bidx=1 ([12])
+  if (presentPeople.length >= 2) {
+    var h12elig = [];
+    early.forEach(function(p){ h12elig.push({p:p,bidx:1}); });
+    normal.forEach(function(p){ h12elig.push({p:p,bidx:1}); });
+    slots.push({ hours:[12,13], eligible: h12elig });
+  }
+
+  // h=14,15: only normal people (early finished at 14:00)
+  if (normal.length >= 2) {
+    slots.push({ hours:[14,15], eligible: normal.map(function(p){return {p:p,bidx:2};}) });
+  }
+
+  // h=17: only normal people
+  if (normal.length >= 2) {
+    slots.push({ hours:[17], eligible: normal.map(function(p){return {p:p,bidx:3};}) });
+  }
+
+  // Edge case: only 1 normal person → they're the only one working, no coverage needed
+  // Edge case: early finishes at 14, if only 1 normal left → no coverage needed after 14
+
+  return slots;
+}
 
 function getUrgencyScore(p, refDay) {
   var tasks = (state.data.tasks[p]||[]).filter(function(t){
@@ -1552,7 +1638,6 @@ function getUrgencyScore(p, refDay) {
 }
 
 function weeklyHoursNeeded(p, day) {
-  // How many office hours this person needs THIS WEEK to stay on track
   var tasks = (state.data.tasks[p]||[]).filter(function(t){
     return t.status==='Em curso' && t.end>=day && (!t.start||t.start<=day);
   });
@@ -1560,24 +1645,23 @@ function weeklyHoursNeeded(p, day) {
   var totalH = tasks.reduce(function(s,t){ return s+(t.hours||0)+(t.hoursExtra||0); }, 0);
   var earliestEnd = tasks.reduce(function(e,t){ return t.end<e?t.end:e; }, '9999');
   var daysLeft = Math.max(1, countWorkdays(day, earliestEnd));
-  // Days remaining this week (Mon=0, Fri=4 → days_remaining = 5 - weekday)
   var d = new Date(day+'T12:00:00');
-  var dow = d.getDay(); // 0=Sun,1=Mon...5=Fri,6=Sat
-  var daysThisWeek = (dow===0||dow===6) ? 0 : (6-dow); // Mon=5,Tue=4,...Fri=1
+  var dow = d.getDay();
+  var daysThisWeek = (dow===0||dow===6) ? 0 : (6-dow);
   if (daysThisWeek < 1) daysThisWeek = 1;
   return Math.ceil(totalH * daysThisWeek / daysLeft);
 }
 
 function weeklyOfficeAvailable(p, fabBidxsToday, day) {
-  // Office hours available today (after fabril) + full days for rest of week
+  var blocks = getOfficeBlocksForDay(p, day);
   var todayOffice = 0;
-  OFFICE_BLOCKS[p].forEach(function(block, idx){
+  blocks.forEach(function(block, idx){
     if (fabBidxsToday.indexOf(idx)===-1) todayOffice += block.length;
   });
   var d = new Date(day+'T12:00:00');
   var dow = d.getDay();
   var daysThisWeek = (dow===0||dow===6) ? 0 : (6-dow);
-  var futureOffice = TOTAL_OFFICE_SLOTS[p] * Math.max(0, daysThisWeek-1);
+  var futureOffice = getTotalOfficeSlotsForDay(p, day) * Math.max(0, daysThisWeek-1);
   return todayOffice + futureOffice;
 }
 
@@ -1614,7 +1698,7 @@ function computeFabrilAssignment(day, weeklyOfficeAccum) {
     cg: getUrgencyScore('cg', day),
     pf: getUrgencyScore('pf', day)
   };
-  var localFabCount = { rn:0, cg:0, pf:0 }; // fabril slots assigned THIS day so far
+  var localFabCount = { rn:0, cg:0, pf:0 };
   var fabBidx = { rn:[], cg:[], pf:[] };
 
   // People present today (not absent, not holiday)
@@ -1622,45 +1706,52 @@ function computeFabrilAssignment(day, weeklyOfficeAccum) {
     return !isPersonAbsent(p, day) && !isHoliday(day);
   });
 
-  COVERAGE_SLOTS.forEach(function(slot) {
-    // Only include people who are actually present today
-    var eligible = Object.keys(slot.opts).filter(function(p) {
-      return presentToday.indexOf(p) !== -1;
+  // Build dynamic coverage slots based on actual schedules today
+  var coverageSlots = buildCoverageSlotsForDay(day, presentToday);
+
+  coverageSlots.forEach(function(slot) {
+    // slot.eligible = [{p, bidx}, ...]
+    var eligible = slot.eligible.filter(function(e) {
+      return presentToday.indexOf(e.p) !== -1;
     });
-    // If nobody present is eligible for this slot, skip it
     if (!eligible.length) return;
+
+    // deduplicate by person (keep first bidx per person)
+    var seen = {};
+    eligible = eligible.filter(function(e) {
+      if (seen[e.p]) return false;
+      seen[e.p] = true;
+      return true;
+    });
     var maxUrg = eligible.reduce(function(m,p){ return urgs[p]>m?urgs[p]:m; }, 0);
 
-    var candidates = eligible.map(function(p) {
-      var bidx = slot.opts[p];
+    var eligiblePeople = eligible.map(function(e){ return e.p; });
+    var maxUrg = eligible.reduce(function(m,e){ return urgs[e.p]>m?urgs[e.p]:m; }, 0);
+
+    var candidates = eligible.map(function(e) {
+      var p = e.p, bidx = e.bidx;
 
       // Event in this block → person must stay in office
       if (hasEventInBlock(p, day, slot.hours)) {
         return { p:p, bidx:bidx, score:-999 };
       }
 
-      // Affordability check (weekly basis)
+      // Forced fab → person already going to fabril, score irrelevant but they can still cover
+      // (forced fab is handled separately in grid, not here)
+
       var tentative = fabBidx[p].concat([bidx]);
       var avail = weeklyOfficeAvailable(p, tentative, day);
       var need  = weeklyHoursNeeded(p, day);
       var affordable = avail >= need;
 
-      // Urgency component: low urgency = high score (more slack = goes to fabril)
       var urgNorm = maxUrg > 0 ? urgs[p]/maxUrg : 0;
-
-      // Balance component: combines weekly office hours + today's fabril count
-      // Person with more office time this week AND fewer fabril slots today → should go to fabril
       var weeklyOff = (weeklyOfficeAccum[p] || 0);
       var todayFab  = localFabCount[p] || 0;
-      // Combined "how much office time has this person had"
-      // Higher = has had more office relative to others → should do more fabril now
-      var maxWeeklyOff = eligible.reduce(function(m,q){ return (weeklyOfficeAccum[q]||0)>m?(weeklyOfficeAccum[q]||0):m; }, 0);
-      var maxTodayFab  = eligible.reduce(function(m,q){ return (localFabCount[q]||0)>m?(localFabCount[q]||0):m; }, 0);
+      var maxWeeklyOff = eligible.reduce(function(m,e2){ return (weeklyOfficeAccum[e2.p]||0)>m?(weeklyOfficeAccum[e2.p]||0):m; }, 0);
+      var maxTodayFab  = eligible.reduce(function(m,e2){ return (localFabCount[e2.p]||0)>m?(localFabCount[e2.p]||0):m; }, 0);
       var weekOffNorm = maxWeeklyOff > 0 ? weeklyOff/maxWeeklyOff : 0;
-      var todayFabNorm= maxTodayFab  > 0 ? todayFab /maxTodayFab  : 0;
-      // If person already did fabril today → penalise strongly to spread across people
+      var todayFabNorm= maxTodayFab  > 0 ? todayFab/maxTodayFab   : 0;
       var balanceScore = weekOffNorm - 2*todayFabNorm;
-
       var score = 3*(1-urgNorm) + 1*balanceScore;
       if (!affordable) score -= 8;
 
@@ -1689,11 +1780,9 @@ function getFabrilAssignmentForDay(day) {
       var d = isoDate(cur);
       var prev = _planCache[d] || computeFabrilAssignment(d, weeklyOffice);
       _planCache[d] = prev;
-      // Count office hours that day
+      // Count office hours that day using dynamic blocks
       ['rn','cg','pf'].forEach(function(p) {
-        OFFICE_BLOCKS[p].forEach(function(block,idx){
-          if (prev[p].indexOf(idx)===-1) weeklyOffice[p] += block.length;
-        });
+        weeklyOffice[p] += countOfficHoursFromAssignment(p, d, prev);
       });
     }
     cur.setDate(cur.getDate()+1);
@@ -1704,24 +1793,41 @@ function getFabrilAssignmentForDay(day) {
   return result;
 }
 
+// Helper: count office hours for a day from an assignment
+function countOfficHoursFromAssignment(p, day, assignment) {
+  var fabBidxs = assignment[p] || [];
+  var blocks = getOfficeBlocksForDay(p, day);
+  var total = 0;
+  blocks.forEach(function(block, idx) {
+    if (fabBidxs.indexOf(idx) === -1) total += block.length;
+  });
+  return total;
+}
+
 function isOnFabrilDuty(p, day, hh) {
-  if (p==='rn' && hh>=6 && hh<9) return true; // Ricardo fixed fabril
+  // Forced fab overrides everything
+  if (getForcedFab(p, day, hh)) return true;
+  // Fixed fabril: anyone on 'early' profile is in fabril 06-09
+  if (isFixedFabril(p, day, hh)) return true;
+
   var assignment = getFabrilAssignmentForDay(day);
   var bidxs = assignment[p] || [];
+  var blocks = getOfficeBlocksForDay(p, day);
+
+  // Check if assigned to fabril for this hour's block
   for (var i=0; i<bidxs.length; i++) {
-    if ((OFFICE_BLOCKS[p][bidxs[i]]||[]).indexOf(hh) !== -1) return true;
+    if ((blocks[bidxs[i]]||[]).indexOf(hh) !== -1) return true;
   }
-  // If hour is in an office block but has NO allocated task → treat as fabril
-  var sc = SCHEDULES[p];
-  if (!sc) return false;
+
+  // If in office block but no task → fabril
+  var sc = getScheduleForDay(p, day);
   var alloc = getAllocatedHours(p, day, sc);
-  var inOfficeBlock = false;
-  for (var bi=0; bi<OFFICE_BLOCKS[p].length; bi++) {
-    if (bidxs.indexOf(bi)===-1 && OFFICE_BLOCKS[p][bi].indexOf(hh)!==-1) {
-      inOfficeBlock = true; break;
+  for (var bi=0; bi<blocks.length; bi++) {
+    if (bidxs.indexOf(bi)===-1 && blocks[bi].indexOf(hh)!==-1) {
+      if (!alloc[hh]) return true; // office block but no task → fabril
+      break;
     }
   }
-  if (inOfficeBlock && !alloc[hh]) return true; // office block but no task → fabril
   return false;
 }
 
@@ -1747,7 +1853,8 @@ function checkDeadlineOverload(day) {
 function getOfficeDayBlocks(p, day) {
   var assignment = getFabrilAssignmentForDay(day);
   var fabBidxs   = assignment[p] || [];
-  return OFFICE_BLOCKS[p].filter(function(_,idx){ return fabBidxs.indexOf(idx)===-1; });
+  var blocks = getOfficeBlocksForDay(p, day);
+  return blocks.filter(function(_,idx){ return fabBidxs.indexOf(idx)===-1; });
 }
 
 function getAllocatedHours(p, day, sc) {
@@ -1981,7 +2088,7 @@ function renderStats() {
 
     html += '<div class="card" style="margin-bottom:16px">';
     html += '<div class="card-header"><div class="card-title">👤 ' + PERSON_LABELS[p] + '</div>';
-    html += '<span class="pill gray">' + SCHEDULES[p].label + '</span></div>';
+    html += '<span class="pill gray">' + getScheduleForDay(p, todayISO()).label + '</span></div>';
     html += '<div class="stats-grid">';
     html += '<div class="stat-card"><div class="stat-num">' + active.length + '</div><div class="stat-label">Em curso</div></div>';
     html += '<div class="stat-card"><div class="stat-num">' + done.length + '</div><div class="stat-label">Concluídas</div></div>';
@@ -2176,7 +2283,7 @@ function printWeekPlan(wStart, wEnd) {
 
   // Build a grid: for each person, for each day, list of slots (hour → label)
   function getCellLabel(p, day, hh) {
-    var sc = SCHEDULES[p];
+    var sc = getScheduleForDay(p, day);
     var pi = PERSON_INFO[p];
     if (hh < sc.start || hh >= sc.end) return null; // outside shift
 
@@ -2207,7 +2314,7 @@ function printWeekPlan(wStart, wEnd) {
     if (evs.length) return { type:'event', label: evs[0].desc + '\n' + formatTime(evs[0].startTime) + (evs[0].endTime ? '–'+formatTime(evs[0].endTime) : '') };
 
     // Tasks
-    var alloc = getAllocatedHours(p, day, SCHEDULES[p]);
+    var alloc = getAllocatedHours(p, day, getScheduleForDay(p, day));
     var task = alloc[hh];
     if (task) return { type:'task', label: task.desc };
 
@@ -2231,7 +2338,7 @@ function printWeekPlan(wStart, wEnd) {
   // Figure out which hours have at least one person active
   function hasAnyActive(hh) {
     return persons.some(function(p) {
-      var sc = SCHEDULES[p];
+      var sc = getScheduleForDay(p, day);
       return hh >= sc.start && hh < sc.end;
     });
   }
