@@ -1757,12 +1757,17 @@ function computeFabrilAssignment(day, weeklyOfficeAccum) {
       var weeklyOff = (weeklyOfficeAccum[p] || 0);
       var todayFab  = localFabCount[p] || 0;
       var maxWeeklyOff = eligible.reduce(function(m,e2){ return (weeklyOfficeAccum[e2.p]||0)>m?(weeklyOfficeAccum[e2.p]||0):m; }, 0);
+      var minWeeklyOff = eligible.reduce(function(m,e2){ return (weeklyOfficeAccum[e2.p]||0)<m?(weeklyOfficeAccum[e2.p]||0):m; }, 999);
       var maxTodayFab  = eligible.reduce(function(m,e2){ return (localFabCount[e2.p]||0)>m?(localFabCount[e2.p]||0):m; }, 0);
-      var weekOffNorm = maxWeeklyOff > 0 ? weeklyOff/maxWeeklyOff : 0;
-      var todayFabNorm= maxTodayFab  > 0 ? todayFab/maxTodayFab   : 0;
-      var balanceScore = weekOffNorm - 2*todayFabNorm;
-      var score = 3*(1-urgNorm) + 1*balanceScore;
-      if (!affordable) score -= 8;
+      // Balance: person with MORE weekly office → higher chance of fabril
+      // Use absolute difference to be more sensitive when numbers are close
+      var weekRange = maxWeeklyOff - minWeeklyOff;
+      var weekOffNorm = weekRange > 0 ? (weeklyOff - minWeeklyOff) / weekRange : 0;
+      var todayFabNorm = maxTodayFab > 0 ? todayFab / maxTodayFab : 0;
+      // Strong balance: weekly office weight=4, today fabril penalty=3, urgency=2
+      var balanceScore = 4*weekOffNorm - 3*todayFabNorm;
+      var score = 2*(1-urgNorm) + balanceScore;
+      if (!affordable) score -= 10;
 
       return { p:p, bidx:bidx, score:score };
     });
@@ -1779,22 +1784,48 @@ function computeFabrilAssignment(day, weeklyOfficeAccum) {
 function getFabrilAssignmentForDay(day) {
   if (_planCache[day]) return _planCache[day];
 
-  // Accumulate weekly office hours Mon→day-1
-  var weekMon = getWeekMon(new Date(day+'T12:00:00'), 0);
+  // Accumulate office hours over the last 2 weeks (10 workdays) for better long-term balance
   var weeklyOffice = { rn:0, cg:0, pf:0 };
-  var cur = new Date(weekMon);
+  var target = new Date(day + 'T12:00:00');
+
+  // Go back 2 weeks from Monday of current week
+  var weekMon = getWeekMon(target, 0);
+  var prevMon = getWeekMon(target, -1); // previous Monday
+  var startFrom = prevMon;
+
+  var cur = new Date(startFrom);
   while (isoDate(cur) < day) {
     var dow = cur.getDay();
-    if (dow!==0 && dow!==6) {
+    if (dow !== 0 && dow !== 6) {
       var d = isoDate(cur);
-      var prev = _planCache[d] || computeFabrilAssignment(d, weeklyOffice);
-      _planCache[d] = prev;
-      // Count office hours that day using dynamic blocks
+      // Use cached result or compute
+      var prev = _planCache[d];
+      if (!prev) {
+        // Need to build up from scratch for past days
+        var pastOffice = { rn:0, cg:0, pf:0 };
+        var pastCur = new Date(startFrom);
+        while (isoDate(pastCur) < d) {
+          if (pastCur.getDay() !== 0 && pastCur.getDay() !== 6) {
+            var pd = isoDate(pastCur);
+            var pp = _planCache[pd] || computeFabrilAssignment(pd, pastOffice);
+            _planCache[pd] = pp;
+            ['rn','cg','pf'].forEach(function(p) {
+              pastOffice[p] += countOfficHoursFromAssignment(p, pd, pp);
+            });
+          }
+          pastCur.setDate(pastCur.getDate() + 1);
+        }
+        prev = _planCache[d] || computeFabrilAssignment(d, pastOffice);
+        _planCache[d] = prev;
+      }
+      // Apply decay: previous week's hours count at 60%, current week at 100%
+      var isCurWeek = isoDate(cur) >= isoDate(weekMon);
+      var weight = isCurWeek ? 1.0 : 0.6;
       ['rn','cg','pf'].forEach(function(p) {
-        weeklyOffice[p] += countOfficHoursFromAssignment(p, d, prev);
+        weeklyOffice[p] += weight * countOfficHoursFromAssignment(p, d, prev);
       });
     }
-    cur.setDate(cur.getDate()+1);
+    cur.setDate(cur.getDate() + 1);
   }
 
   var result = computeFabrilAssignment(day, weeklyOffice);
