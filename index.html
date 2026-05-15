@@ -535,7 +535,18 @@ textarea{resize:vertical;min-height:70px}
 <script>
 
 // Script URL injected server-side — enables fetch() without Google session
-var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwRbGoB8tY5o1HR11ePm3LPdLB-z9i-Gp6pBPkchkNFErU4cn75gyDFSRpj6YGqXCkSGg/exec';
+// SCRIPT_URL: filled by Apps Script server, or auto-detected from page URL
+var SCRIPT_URL = (function() {
+  var tpl = '<?= scriptUrl ?>';
+  // If template was NOT filled (still contains the template syntax), use page URL
+  if (tpl.indexOf('<?') !== -1 || tpl.indexOf('scriptUrl') !== -1) {
+    // Try to get from window.location (works when served by Apps Script)
+    var loc = window.location.href;
+    // Remove query params and hash, keep the exec URL
+    return loc.split('?')[0].split('#')[0];
+  }
+  return tpl;
+})();
 
 // ═══════════════════════════════════════════════════════════
 //  STATE
@@ -1796,45 +1807,19 @@ function computeFabrilAssignment(day, weeklyOfficeAccum) {
 function getFabrilAssignmentForDay(day) {
   if (_planCache[day]) return _planCache[day];
 
-  // Accumulate office hours over the last 2 weeks (10 workdays) for better long-term balance
+  // Accumulate office hours from Monday of current week up to (but not including) today
   var weeklyOffice = { rn:0, cg:0, pf:0 };
-  var target = new Date(day + 'T12:00:00');
+  var weekMon = getWeekMon(new Date(day + 'T12:00:00'), 0);
+  var cur = new Date(weekMon);
 
-  // Go back 2 weeks from Monday of current week
-  var weekMon = getWeekMon(target, 0);
-  var prevMon = getWeekMon(target, -1); // previous Monday
-  var startFrom = prevMon;
-
-  var cur = new Date(startFrom);
   while (isoDate(cur) < day) {
     var dow = cur.getDay();
     if (dow !== 0 && dow !== 6) {
       var d = isoDate(cur);
-      // Use cached result or compute
-      var prev = _planCache[d];
-      if (!prev) {
-        // Need to build up from scratch for past days
-        var pastOffice = { rn:0, cg:0, pf:0 };
-        var pastCur = new Date(startFrom);
-        while (isoDate(pastCur) < d) {
-          if (pastCur.getDay() !== 0 && pastCur.getDay() !== 6) {
-            var pd = isoDate(pastCur);
-            var pp = _planCache[pd] || computeFabrilAssignment(pd, pastOffice);
-            _planCache[pd] = pp;
-            ['rn','cg','pf'].forEach(function(p) {
-              pastOffice[p] += countOfficHoursFromAssignment(p, pd, pp);
-            });
-          }
-          pastCur.setDate(pastCur.getDate() + 1);
-        }
-        prev = _planCache[d] || computeFabrilAssignment(d, pastOffice);
-        _planCache[d] = prev;
-      }
-      // Apply decay: previous week's hours count at 60%, current week at 100%
-      var isCurWeek = isoDate(cur) >= isoDate(weekMon);
-      var weight = isCurWeek ? 1.0 : 0.6;
+      var prev = _planCache[d] || computeFabrilAssignment(d, weeklyOffice);
+      _planCache[d] = prev;
       ['rn','cg','pf'].forEach(function(p) {
-        weeklyOffice[p] += weight * countOfficHoursFromAssignment(p, d, prev);
+        weeklyOffice[p] += countOfficHoursFromAssignment(p, d, prev);
       });
     }
     cur.setDate(cur.getDate() + 1);
@@ -1916,8 +1901,9 @@ function getAllocatedHours(p, day, sc) {
   var tasks = getDayTasks(p, day);
   if (!tasks.length) return {};
 
+  // Sort by deadline (earliest first)
   tasks = tasks.slice().sort(function(a,b){
-    return (a.end||'9999')<=(b.end||'9999') ? -1 : 1;
+    return (a.end||'9999') <= (b.end||'9999') ? -1 : 1;
   });
 
   var blocks = getOfficeDayBlocks(p, day);
@@ -1930,8 +1916,6 @@ function getAllocatedHours(p, day, sc) {
     var wdays  = Math.max(1, countWorkdays(t.start||day, t.end));
     var hoursToday = Math.ceil(totalH/wdays);
 
-    // Find the MINIMUM set of available blocks that covers hoursToday.
-    // Try single blocks first (fewest blocks = best), then pairs, etc.
     var availIdxs = [];
     for (var bi=0; bi<blocks.length; bi++) {
       if (usedBlockIdxs.indexOf(bi) === -1) availIdxs.push(bi);
@@ -1939,11 +1923,10 @@ function getAllocatedHours(p, day, sc) {
     if (!availIdxs.length) break;
 
     var chosen = null;
-    // Try increasing number of blocks until we cover hoursToday
+
+    // Try to find minimum blocks that cover hoursToday
     for (var r=1; r<=availIdxs.length; r++) {
-      // Find combination of r blocks with minimum total hours >= hoursToday
       var bestCombo = null, bestTotal = Infinity;
-      // Enumerate combinations of size r from availIdxs
       (function findCombos(start, combo) {
         if (combo.length === r) {
           var total = 0;
@@ -1961,6 +1944,12 @@ function getAllocatedHours(p, day, sc) {
         }
       })(0, []);
       if (bestCombo !== null) { chosen = bestCombo; break; }
+    }
+
+    // If no combination covers hoursToday (not enough blocks available today),
+    // use ALL available blocks — person works on this task for whatever time is available
+    if (!chosen && availIdxs.length > 0) {
+      chosen = availIdxs.slice();
     }
 
     if (!chosen) break;
