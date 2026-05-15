@@ -1383,10 +1383,9 @@ function renderPlanning() {
             var evLabel = (evTime ? evTime + ' ' : '') + esc(ev.desc.length > 16 ? ev.desc.substring(0,16)+'…' : ev.desc);
             content += '<span class="pg-chip event" title="' + esc(ev.desc) + ' (' + evTime + ')">📅 ' + evLabel + '</span>';
           });
-          // No task and no event in this office hour → send to fabril
+          // No task/event for this specific hour → show generic office chip
           if (!content) {
-            content = '<span class="pg-chip fabril">🏭 Espaço Fabril</span>';
-            cellCls = cellCls.replace(' work', '') + ' work'; // keep work class
+            content = '<span class="pg-chip office-free">💼 Escritório</span>';
           }
         }
       }
@@ -1705,11 +1704,9 @@ var _planCache = {};
 function invalidateFabrilCache() { _planCache = {}; }
 
 function computeFabrilAssignment(day, weeklyOfficeAccum) {
-  var urgs = {
-    rn: getUrgencyScore('rn', day),
-    cg: getUrgencyScore('cg', day),
-    pf: getUrgencyScore('pf', day)
-  };
+  // Urgency scores no longer drive fabril rotation.
+  // Office time is distributed equally; only deadline impossibility overrides balance.
+  // (getUrgencyScore still used in weeklyHoursNeeded for impossibility detection)
   var localFabCount = { rn:0, cg:0, pf:0 };
   var fabBidx = { rn:[], cg:[], pf:[] };
 
@@ -1735,7 +1732,7 @@ function computeFabrilAssignment(day, weeklyOfficeAccum) {
       seen[e.p] = true;
       return true;
     });
-    var maxUrg = eligible.reduce(function(m,e){ return urgs[e.p]>m?urgs[e.p]:m; }, 0);
+    // (maxUrg removed - urgency no longer used in scoring)
 
     var candidates = eligible.map(function(e) {
       var p = e.p, bidx = e.bidx;
@@ -1753,21 +1750,36 @@ function computeFabrilAssignment(day, weeklyOfficeAccum) {
       var need  = weeklyHoursNeeded(p, day);
       var affordable = avail >= need;
 
-      var urgNorm = maxUrg > 0 ? urgs[p]/maxUrg : 0;
       var weeklyOff = (weeklyOfficeAccum[p] || 0);
       var todayFab  = localFabCount[p] || 0;
+
+      // ── PRIMARY: equal distribution of office hours ────────────────
+      // Person with MOST weekly office time gets highest fabril score
+      // (they've had more office → now it's their turn for fabril)
       var maxWeeklyOff = eligible.reduce(function(m,e2){ return (weeklyOfficeAccum[e2.p]||0)>m?(weeklyOfficeAccum[e2.p]||0):m; }, 0);
       var minWeeklyOff = eligible.reduce(function(m,e2){ return (weeklyOfficeAccum[e2.p]||0)<m?(weeklyOfficeAccum[e2.p]||0):m; }, 999);
+      var weekRange    = maxWeeklyOff - minWeeklyOff;
+      var weekOffNorm  = weekRange > 0 ? (weeklyOff - minWeeklyOff) / weekRange : 0;
+
+      // Tiebreaker: avoid sending same person to fabril multiple times today
       var maxTodayFab  = eligible.reduce(function(m,e2){ return (localFabCount[e2.p]||0)>m?(localFabCount[e2.p]||0):m; }, 0);
-      // Balance: person with MORE weekly office → higher chance of fabril
-      // Use absolute difference to be more sensitive when numbers are close
-      var weekRange = maxWeeklyOff - minWeeklyOff;
-      var weekOffNorm = weekRange > 0 ? (weeklyOff - minWeeklyOff) / weekRange : 0;
       var todayFabNorm = maxTodayFab > 0 ? todayFab / maxTodayFab : 0;
-      // Strong balance: weekly office weight=4, today fabril penalty=3, urgency=2
-      var balanceScore = 4*weekOffNorm - 3*todayFabNorm;
-      var score = 2*(1-urgNorm) + balanceScore;
-      if (!affordable) score -= 10;
+
+      // Base score: most office time → goes to fabril; already did fabril today → less likely
+      var score = 5 * weekOffNorm - 3 * todayFabNorm;
+
+      // ── SECONDARY: deadline impossibility override ─────────────────
+      // Only override equality if person CANNOT finish without office today
+      // (i.e., remaining office slots this week < hours still needed to finish)
+      // This is binary: impossible → bonus; possible → no change
+      var tentative = fabBidx[p].concat([bidx]);
+      var officeRemaining = weeklyOfficeAvailable(p, tentative, day);
+      var hoursNeeded     = weeklyHoursNeeded(p, day);
+      if (officeRemaining < hoursNeeded) {
+        // This person CANNOT finish on time without office today → protect them
+        // Negative score → they should NOT go to fabril (go to office instead)
+        score -= 20;
+      }
 
       return { p:p, bidx:bidx, score:score };
     });
@@ -1859,13 +1871,14 @@ function isOnFabrilDuty(p, day, hh) {
     if ((blocks[bidxs[i]]||[]).indexOf(hh) !== -1) return true;
   }
 
-  // If in office block but no task → fabril
-  var sc = getScheduleForDay(p, day);
-  var alloc = getAllocatedHours(p, day, sc);
+  // If in an office block: only stay in office if there's an active task today
+  // "active task" = task that spans today (regardless of how hours are distributed)
+  var dayActiveTasks = getDayTasks(p, day);
   for (var bi=0; bi<blocks.length; bi++) {
     if (bidxs.indexOf(bi)===-1 && blocks[bi].indexOf(hh)!==-1) {
-      if (!alloc[hh]) return true; // office block but no task → fabril
-      break;
+      // In an office block not assigned to fabril
+      if (!dayActiveTasks.length) return true; // no task at all → fabril
+      return false; // has task → office
     }
   }
   return false;
