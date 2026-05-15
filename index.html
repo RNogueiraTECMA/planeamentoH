@@ -534,19 +534,7 @@ textarea{resize:vertical;min-height:70px}
 
 <script>
 
-// Script URL injected server-side — enables fetch() without Google session
-// SCRIPT_URL: filled by Apps Script server, or auto-detected from page URL
-var SCRIPT_URL = (function() {
-  var tpl = '<?= scriptUrl ?>';
-  // If template was NOT filled (still contains the template syntax), use page URL
-  if (tpl.indexOf('<?') !== -1 || tpl.indexOf('scriptUrl') !== -1) {
-    // Try to get from window.location (works when served by Apps Script)
-    var loc = window.location.href;
-    // Remove query params and hash, keep the exec URL
-    return loc.split('?')[0].split('#')[0];
-  }
-  return tpl;
-})();
+var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwRbGoB8tY5o1HR11ePm3LPdLB-z9i-Gp6pBPkchkNFErU4cn75gyDFSRpj6YGqXCkSGg/exec';
 
 // ═══════════════════════════════════════════════════════════
 //  STATE
