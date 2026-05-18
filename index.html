@@ -1518,11 +1518,18 @@ function getDayEvents(p, day) {
 //  O planeamento recalcula tudo dinamicamente por dia.
 
 // Blocos de escritório para cada perfil
+// Blocos baseados nos turnos reais:
+//   Bloco A [9,10]:   2h — ambos os perfis
+//   Bloco B [11,12]:  2h — ambos os perfis
+//   Bloco C [13]:     1h — só early (às 13h o normal está em almoço)
+//   Bloco D [14,15]:  2h — só normal (early saiu às 14h)
+//   Bloco E [16,17]:  2h — só normal
+//   h=8 (08:30-09 para normal) → sem bloco → vai para fabril
 var OFFICE_BLOCKS_BY_PROFILE = {
-  early:  [[10], [12, 13]],
-  normal: [[8,9,10], [12], [14,15], [17]]
+  early:  [[9,10], [11,12], [13]],               // 5 slots: A(2h)+B(2h)+C(1h)
+  normal: [[9,10], [11,12], [14,15], [16,17]]    // 8 slots: A(2h)+B(2h)+D(2h)+E(2h)
 };
-var TOTAL_SLOTS_BY_PROFILE = { early: 3, normal: 7 };
+var TOTAL_SLOTS_BY_PROFILE = { early: 5, normal: 8 };
 
 // Schedules base por perfil
 var SCHEDULES_BY_PROFILE = {
@@ -1580,68 +1587,52 @@ function isFixedFabril(p, day, hh) {
 //   • Coverage slots cover hours where ≥2 people are working
 function buildCoverageSlotsForDay(day, presentPeople) {
   // ═══════════════════════════════════════════════════════════
-  // REGRAS DE COBERTURA FABRIL:
-  // 1. 06:00-09:00 → TODOS com perfil 'early' em fabril fixo (isFixedFabril)
-  //    + se há pessoas 'normal' presentes → 1 delas também vai ao fabril no bloco [8,9,10]
-  //    → garante ≥2 pessoas em fabril das 08:30-09:00
-  // 2. 09:00-17:30 → SEMPRE ≥1 pessoa em fabril em cada bloco com gente a trabalhar
-  // 3. Blocos completos: nunca parciais
+  // BLOCOS DE ESCRITÓRIO (após 06-09 fabril fixo):
+  //   Bloco A [9,10]:   todos os perfis — 1 vai ao fabril
+  //   Bloco B [11,12]:  todos os perfis — 1 vai ao fabril
+  //   Bloco C [13]:     só early (normal em almoço 13-14) — 1 early vai ao fabril
+  //   Bloco D [14,15]:  só normal (early saiu) — 1 vai ao fabril
+  //   Bloco E [16,17]:  só normal — 1 vai ao fabril
+  //
+  // A pausa das early às 9:00-9:15 é aceite (15min sem cobertura do 2º early ok).
   // ═══════════════════════════════════════════════════════════
   var early  = presentPeople.filter(function(p){ return getProfile(p,day)==='early'; });
   var normal = presentPeople.filter(function(p){ return getProfile(p,day)==='normal'; });
   var slots  = [];
 
-  // ── BLOCO [8,9,10]: normal people ─────────────────────────────────────
-  // Regra: ≥2 pessoas em fabril das 06-09.
-  // early people cobrem fabril fixo 06-09 → se há ≥2 early, cobertura garantida.
-  // A pausa das early às 9:00-9:15 é aceite sem cobertura fabril obrigatória.
-  // Só é necessário slot de cobertura para [8,9,10] se há <2 early presentes.
-  if (normal.length >= 1 && early.length < 2) {
-    // Menos de 2 early → normal cobre para garantir os 2 fabris das 08:30-09
-    slots.push({
-      hours: [8,9,10],
-      eligible: normal.map(function(p){ return {p:p, bidx:0}; })
-    });
-  } else if (normal.length >= 2 && early.length >= 2) {
-    // ≥2 early já cobrem 06-09. Para o bloco [8,9,10] ainda precisamos de
-    // 1 normal em fabril para cobertura das 09:15-11 (após pausa early)
-    slots.push({
-      hours: [8,9,10],
-      eligible: normal.map(function(p){ return {p:p, bidx:0}; })
-    });
-  }
-  // Se early.length >= 2 e normal.length === 1: normal vai para escritório,
-  // early cobrem fabril 06-09 e rodam depois
+  // ── BLOCO A [9,10]: todos elegíveis ───────────────────────────────────
+  var eligA = [];
+  early.forEach(function(p){ eligA.push({p:p, bidx:0}); });
+  normal.forEach(function(p){ eligA.push({p:p, bidx:0}); });
+  if (eligA.length >= 1) slots.push({ hours:[9,10], eligible:eligA });
 
-  // ── BLOCO [10] para early (depois da pausa das 9): se só há early ─────
-  // Se não há nenhum normal mas há ≥2 early, 1 early cobre h=10
-  if (normal.length === 0 && early.length >= 2) {
+  // ── BLOCO B [11,12]: todos elegíveis ──────────────────────────────────
+  var eligB = [];
+  early.forEach(function(p){ eligB.push({p:p, bidx:1}); });
+  normal.forEach(function(p){ eligB.push({p:p, bidx:1}); });
+  if (eligB.length >= 1) slots.push({ hours:[11,12], eligible:eligB });
+
+  // ── BLOCO C [13]: só early (normal em almoço) ─────────────────────────
+  // Se há early presentes: 1 vai ao fabril para cobrir o almoço dos normal
+  if (early.length >= 1) {
     slots.push({
-      hours: [10],
-      eligible: early.map(function(p){ return {p:p, bidx:0}; })
+      hours: [13],
+      eligible: early.map(function(p){ return {p:p, bidx:2}; })
     });
   }
 
-  // ── BLOCO [12,13] (early bidx=1) / [12] (normal bidx=1) ───────────────
-  // Todos os presentes elegíveis (early: bloco [12,13], normal: bloco [12])
-  // Regra: ≥1 pessoa presente → 1 vai ao fabril
-  var present12 = [];
-  early.forEach(function(p){ present12.push({p:p, bidx:1}); });
-  normal.forEach(function(p){ present12.push({p:p, bidx:1}); });
-  if (present12.length >= 1) {
-    slots.push({ hours:[12,13], eligible: present12 });
-  }
-
-  // ── BLOCOS [14,15] e [17]: só normal people (early saiu às 14:00) ─────
-  // Regra: se há ≥1 normal → 1 delas DEVE ir ao fabril (obrigatório)
-  // Não apenas quando há ≥2 → mesmo com 1 normal, essa pessoa vai ao fabril
+  // ── BLOCO D [14,15]: só normal (early saiu às 14h) ────────────────────
   if (normal.length >= 1) {
     slots.push({
       hours: [14,15],
       eligible: normal.map(function(p){ return {p:p, bidx:2}; })
     });
+  }
+
+  // ── BLOCO E [16,17]: só normal ────────────────────────────────────────
+  if (normal.length >= 1) {
     slots.push({
-      hours: [17],
+      hours: [16,17],
       eligible: normal.map(function(p){ return {p:p, bidx:3}; })
     });
   }
