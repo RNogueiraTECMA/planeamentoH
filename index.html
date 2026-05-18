@@ -534,6 +534,8 @@ textarea{resize:vertical;min-height:70px}
 
 <script>
 
+// Script URL injected server-side — enables fetch() without Google session
+// SCRIPT_URL: filled by Apps Script server, or auto-detected from page URL
 var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwRbGoB8tY5o1HR11ePm3LPdLB-z9i-Gp6pBPkchkNFErU4cn75gyDFSRpj6YGqXCkSGg/exec';
 
 // ═══════════════════════════════════════════════════════════
@@ -1590,15 +1592,26 @@ function buildCoverageSlotsForDay(day, presentPeople) {
   var slots  = [];
 
   // ── BLOCO [8,9,10]: normal people ─────────────────────────────────────
-  // h=8,9: só normal people activas (early em break até 09:15)
-  // Regra: se há ≥1 normal → 1 delas vai ao fabril (bloco [8,9,10])
-  // Isto também garante 2 em fabril 08:30-09 (1 early fixo + 1 normal)
-  if (normal.length >= 1) {
+  // Regra: ≥2 pessoas em fabril das 06-09.
+  // early people cobrem fabril fixo 06-09 → se há ≥2 early, cobertura garantida.
+  // A pausa das early às 9:00-9:15 é aceite sem cobertura fabril obrigatória.
+  // Só é necessário slot de cobertura para [8,9,10] se há <2 early presentes.
+  if (normal.length >= 1 && early.length < 2) {
+    // Menos de 2 early → normal cobre para garantir os 2 fabris das 08:30-09
+    slots.push({
+      hours: [8,9,10],
+      eligible: normal.map(function(p){ return {p:p, bidx:0}; })
+    });
+  } else if (normal.length >= 2 && early.length >= 2) {
+    // ≥2 early já cobrem 06-09. Para o bloco [8,9,10] ainda precisamos de
+    // 1 normal em fabril para cobertura das 09:15-11 (após pausa early)
     slots.push({
       hours: [8,9,10],
       eligible: normal.map(function(p){ return {p:p, bidx:0}; })
     });
   }
+  // Se early.length >= 2 e normal.length === 1: normal vai para escritório,
+  // early cobrem fabril 06-09 e rodam depois
 
   // ── BLOCO [10] para early (depois da pausa das 9): se só há early ─────
   // Se não há nenhum normal mas há ≥2 early, 1 early cobre h=10
@@ -1844,13 +1857,13 @@ function isOnFabrilDuty(p, day, hh) {
     if ((blocks[bidxs[i]]||[]).indexOf(hh) !== -1) return true;
   }
 
-  // If in an office block: only stay in office if there's an active task today
-  // "active task" = task that spans today (regardless of how hours are distributed)
-  var dayActiveTasks = getDayTasks(p, day);
+  // If in an office block: check if this specific hour has a task allocated
+  var sc = getScheduleForDay(p, day);
+  var alloc = getAllocatedHours(p, day, sc);
   for (var bi=0; bi<blocks.length; bi++) {
     if (bidxs.indexOf(bi)===-1 && blocks[bi].indexOf(hh)!==-1) {
-      // In an office block not assigned to fabril
-      if (!dayActiveTasks.length) return true; // no task at all → fabril
+      // In an office block not assigned to fabril rotation
+      if (!alloc[hh]) return true; // no task allocated this hour → fabril
       return false; // has task → office
     }
   }
@@ -1886,66 +1899,55 @@ function getOfficeDayBlocks(p, day) {
 }
 
 function getAllocatedHours(p, day, sc) {
+  // ── NOVA LÓGICA: horas às tarefas (não tarefas às horas) ──────────────
+  // 1. Obter blocos de escritório disponíveis hoje (após rotação fabril)
+  // 2. Calcular urgência de cada tarefa: horas_restantes / dias_úteis_restantes
+  // 3. Ordenar por urgência DESC (mais urgente primeiro)
+  // 4. Preencher blocos greedy: tarefa mais urgente recebe blocos até satisfeita
+  // 5. Bloco inteiro vai sempre para a mesma tarefa (blocos completos)
+  // 6. Blocos sobrantes (sem tarefa) → isOnFabrilDuty converte para fabril
+
   var tasks = getDayTasks(p, day);
   if (!tasks.length) return {};
 
-  // Sort by deadline (earliest first)
-  tasks = tasks.slice().sort(function(a,b){
-    return (a.end||'9999') <= (b.end||'9999') ? -1 : 1;
+  // Calcular urgência: horas_totais / dias_úteis_restantes
+  tasks = tasks.slice().map(function(t) {
+    var totalH = (t.hours||0) + (t.hoursExtra||0);
+    var wdays  = Math.max(1, countWorkdays(day, t.end, p));
+    var urgency = totalH / wdays; // horas/dia necessárias
+    return { task: t, totalH: totalH, urgency: urgency, wdays: wdays };
   });
 
-  var blocks = getOfficeDayBlocks(p, day);
+  // Ordenar por urgência DESC (mais urgente primeiro)
+  tasks.sort(function(a, b) { return b.urgency - a.urgency; });
+
+  var blocks    = getOfficeDayBlocks(p, day);
   var hourToTask = {};
-  var usedBlockIdxs = [];
+  var blockPtr  = 0; // percorrer blocos em ordem
 
-  for (var ti=0; ti<tasks.length; ti++) {
-    var t = tasks[ti];
-    var totalH = (t.hours||0)+(t.hoursExtra||0);
-    var wdays  = Math.max(1, countWorkdays(t.start||day, t.end));
-    var hoursToday = Math.ceil(totalH/wdays);
+  for (var ti = 0; ti < tasks.length; ti++) {
+    if (blockPtr >= blocks.length) break;
 
-    var availIdxs = [];
-    for (var bi=0; bi<blocks.length; bi++) {
-      if (usedBlockIdxs.indexOf(bi) === -1) availIdxs.push(bi);
+    var t        = tasks[ti].task;
+    var urgency  = tasks[ti].urgency;
+    var wdays    = tasks[ti].wdays;
+    var totalH   = tasks[ti].totalH;
+
+    // Quanto esta tarefa precisa hoje: pelo menos urgency horas
+    // Mas um bloco é indivisível → o bloco inteiro vai para esta tarefa
+    // Continua a adicionar blocos enquanto não atingir a necessidade diária
+    var hoursAllocated = 0;
+    var hoursNeeded    = Math.max(1, Math.ceil(urgency)); // mínimo 1h se há tarefa
+
+    while (blockPtr < blocks.length && hoursAllocated < hoursNeeded) {
+      var block = blocks[blockPtr];
+      block.forEach(function(h) { hourToTask[h] = t; });
+      hoursAllocated += block.length;
+      blockPtr++;
     }
-    if (!availIdxs.length) break;
-
-    var chosen = null;
-
-    // Try to find minimum blocks that cover hoursToday
-    for (var r=1; r<=availIdxs.length; r++) {
-      var bestCombo = null, bestTotal = Infinity;
-      (function findCombos(start, combo) {
-        if (combo.length === r) {
-          var total = 0;
-          combo.forEach(function(i){ total += blocks[i].length; });
-          if (total >= hoursToday && total < bestTotal) {
-            bestTotal = total;
-            bestCombo = combo.slice();
-          }
-          return;
-        }
-        for (var k=start; k<availIdxs.length; k++) {
-          combo.push(availIdxs[k]);
-          findCombos(k+1, combo);
-          combo.pop();
-        }
-      })(0, []);
-      if (bestCombo !== null) { chosen = bestCombo; break; }
-    }
-
-    // If no combination covers hoursToday (not enough blocks available today),
-    // use ALL available blocks — person works on this task for whatever time is available
-    if (!chosen && availIdxs.length > 0) {
-      chosen = availIdxs.slice();
-    }
-
-    if (!chosen) break;
-    chosen.forEach(function(i) {
-      usedBlockIdxs.push(i);
-      blocks[i].forEach(function(h){ hourToTask[h] = t; });
-    });
+    // Tarefa satisfeita. Se alocou mais do que o necessário, ok — trabalha à frente.
   }
+
   return hourToTask;
 }
 
