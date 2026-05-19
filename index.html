@@ -1156,11 +1156,7 @@ function updateCompletePreview(task) {
   // Use SCHEDULES to count only working hours
   if (!task) task = findTask(document.getElementById('complete-id').value, p);
   if (!task || !task.start) return;
-  var _sc = getScheduleForDay(p, task.start||todayISO());
-  var startDT = task.start + 'T' + (_sc ? ('0'+Math.floor(_sc.start)).slice(-2)+':00' : '00:00');
-  var endDT   = dateVal + 'T' + timeVal;
-  // Simple estimate: count days * hoursPerDay
-  var spent = estimateWorkHours(startDT, endDT, p);
+  var spent = estimateWorkHours(task.id, p, task.start||todayISO(), dateVal);
   var total  = (task.hours||0) + (task.hoursExtra||0);
   var diff   = Math.round((spent - total) * 10) / 10;
   document.getElementById('complete-hours-preview').textContent = spent + 'h';
@@ -1170,42 +1166,32 @@ function updateCompletePreview(task) {
   else { vEl.textContent = 'Dentro do previsto ✓'; vEl.style.color = 'var(--green)'; }
 }
 
-function estimateWorkHours(startISO, endISO, p) {
-  // Count only OFFICE BLOCK hours (not fabril rotation hours)
-  // This matches exactly what the planner allocates to tasks
-  var s = new Date(startISO), e = new Date(endISO);
-  if (e <= s) return 0;
-  var total = 0, cur = new Date(s);
-  cur.setHours(0,0,0,0);
+function estimateWorkHours(taskId, p, taskStartISO, completedDateISO) {
+  // Replay the planning algorithm day by day from task start to completion date,
+  // summing the hours that were actually allocated to this specific task.
+  // This gives the exact real hours worked — no estimation.
+  var total = 0;
+  var cur = new Date(taskStartISO + 'T12:00:00');
+  var endDate = new Date(completedDateISO + 'T12:00:00');
 
-  while (cur <= e) {
+  while (isoDate(cur) <= completedDateISO) {
     var dow = cur.getDay();
     var dayISO = isoDate(cur);
     if (dow !== 0 && dow !== 6 && !isHoliday(dayISO) && !isPersonAbsent(p, dayISO)) {
       var sc = getScheduleForDay(p, dayISO);
-      if (!sc) { cur.setDate(cur.getDate()+1); continue; }
-      var officeBlocks = getOfficeDayBlocks(p, dayISO);
-      officeBlocks.forEach(function(block) {
-        block.forEach(function(hh) {
-          // Each block hour = 1h slot
-          // Check if this hour overlaps with [s, e]
-          var slotStart = new Date(cur); slotStart.setHours(hh, 0, 0, 0);
-          var slotEnd   = new Date(cur); slotEnd.setHours(hh+1, 0, 0, 0);
-          // Also clip to shift start (e.g. CG starts at 08:30, not 08:00)
-          var shiftStart = new Date(cur); shiftStart.setHours(Math.floor(sc.start),(sc.start%1)*60,0,0);
-          if (slotStart < shiftStart) slotStart = shiftStart;
-          // Intersect with [s, e]
-          var ws = s > slotStart ? s : slotStart;
-          var we = e < slotEnd   ? e : slotEnd;
-          if (we > ws) {
-            total += (we - ws) / 3600000;
+      if (sc) {
+        var alloc = getAllocatedHours(p, dayISO, sc);
+        // Count hours where this task was allocated
+        Object.keys(alloc).forEach(function(hh) {
+          if (alloc[hh] && alloc[hh].id === taskId) {
+            total += 1; // each slot = 1 hour
           }
         });
-      });
+      }
     }
     cur.setDate(cur.getDate() + 1);
   }
-  return Math.round(total * 10) / 10;
+  return total;
 }
 
 function saveComplete() {
@@ -1217,10 +1203,7 @@ function saveComplete() {
   var completedAt = date + 'T' + time + ':00';
   closeModal('modal-complete');
   var task = findTask(id, p);
-  var _scSave = task ? getScheduleForDay(p, task.start||todayISO()) : null;
-  var hoursSpent = task ? estimateWorkHours(
-    (task.start||todayISO()) + 'T' + (_scSave ? ('0'+Math.floor(_scSave.start)).slice(-2)+':00' : '00:00'),
-    completedAt, p) : null;
+  var hoursSpent = task ? estimateWorkHours(task.id, p, task.start||todayISO(), completedAt.substring(0,10)) : null;
   callServer('completeTask', { id: id, person: p, completedAt: completedAt, hoursSpent: hoursSpent }, function(err, res) {
     if (err || (res && res.error)) { showToast('Erro ao concluir tarefa', 'error'); return; }
     showToast('Tarefa concluída! ' + (res.hoursSpent != null ? res.hoursSpent + 'h gastas.' : ''), 'success');
