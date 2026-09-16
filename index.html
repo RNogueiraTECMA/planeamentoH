@@ -54,6 +54,7 @@ aside{width:var(--sidebar);flex-shrink:0;background:var(--navy);height:100vh;dis
 .av-rn{background:linear-gradient(135deg,#3b6de8,#1a47c8)}
 .av-cg{background:linear-gradient(135deg,#16a06a,#0d7a50)}
 .av-pf{background:linear-gradient(135deg,#d97316,#b85c0a)}
+.av-ir{background:linear-gradient(135deg,#8b5cf6,#6d28d9)}
 .pname{font-size:13px;font-weight:500;color:#fff;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .psched{font-size:10px;color:rgba(255,255,255,.35);margin-top:1px}
 .pbadge{font-size:10px;font-weight:600;background:rgba(255,255,255,.12);color:rgba(255,255,255,.7);padding:1px 6px;border-radius:20px;flex-shrink:0}
@@ -235,11 +236,16 @@ textarea{resize:vertical;min-height:70px}
         <div class="pav av-pf">PF</div>
         <div style="flex:1;min-width:0"><div class="pname">Pedro Fernandes</div><div class="psched">08:30–17:30</div></div>
       </button>
+      <button class="pcard" id="pc-ir" data-person="ir" onclick="setPerson('ir')">
+        <div class="pav av-ir">IR</div>
+        <div style="flex:1;min-width:0"><div class="pname">Inês Reis</div><div class="psched">08:30–17:30</div></div>
+      </button>
     </div>
     <div class="sb-nav">
       <div class="sb-label" style="margin-bottom:8px">Vistas</div>
       <button class="nitem active" id="n-items"    onclick="setTab('items')">   <span class="ni-ico">📋</span> Tarefas e Eventos</button>
       <button class="nitem"        id="n-planning" onclick="setTab('planning')"><span class="ni-ico">📅</span> Planeamento</button>
+      <button class="nitem"        id="n-kpis"     onclick="setTab('kpis')">   <span class="ni-ico">🎯</span> KPIs</button>
       <button class="nitem"        id="n-stats"    onclick="setTab('stats')">   <span class="ni-ico">📊</span> Estatísticas</button>
     </div>
     <div class="sb-footer">
@@ -255,6 +261,7 @@ textarea{resize:vertical;min-height:70px}
     <main>
       <div id="tab-items"></div>
       <div id="tab-planning" style="display:none"></div>
+      <div id="tab-kpis"     style="display:none"></div>
       <div id="tab-stats"    style="display:none"></div>
     </main>
   </div>
@@ -536,7 +543,7 @@ textarea{resize:vertical;min-height:70px}
 
 // Script URL injected server-side — enables fetch() without Google session
 // SCRIPT_URL: filled by Apps Script server, or auto-detected from page URL
-var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwRbGoB8tY5o1HR11ePm3LPdLB-z9i-Gp6pBPkchkNFErU4cn75gyDFSRpj6YGqXCkSGg/exec';
+var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyWgmYu4nF-un0ggOeQ1iPy99EcaXyLuS3GVtrn3gJupvn0Aceh80Nb7NkYBt2ABrcSMQ/exec';
 
 // ═══════════════════════════════════════════════════════════
 //  STATE
@@ -546,12 +553,12 @@ var state = {
   tab: 'items',
   planWeekOffset: 0,
   planDay: null,
-  data: { tasks:{rn:[],cg:[],pf:[]}, events:{rn:[],cg:[],pf:[]}, absences:{rn:[],cg:[],pf:[]},
-         schedules:{rn:[],cg:[],pf:[]}, forcedFab:{rn:[],cg:[],pf:[]} },
+  data: { tasks:{rn:[],cg:[],pf:[],ir:[]}, events:{rn:[],cg:[],pf:[],ir:[]}, absences:{rn:[],cg:[],pf:[],ir:[]},
+         schedules:{rn:[],cg:[],pf:[],ir:[]}, forcedFab:{rn:[],cg:[],pf:[],ir:[]}, kpis:[] },
   loaded: false
 };
 
-var PERSON_LABELS = { rn: 'Ricardo Nogueira', cg: 'Cristiana Gonçalves', pf: 'Pedro Fernandes' };
+var PERSON_LABELS = { rn: 'Ricardo Nogueira', cg: 'Cristiana Gonçalves', pf: 'Pedro Fernandes', ir: 'Inês Reis' };
 var SCHEDULES = {
   rn: { start:6,   end:14,  hoursPerDay:7.5, label:'06:00–14:00',
         breaks:[{s:9, e:9.25, label:'Pausa 15min'},{s:11,e:11.25,label:'Pausa 15min'}] },
@@ -562,9 +569,10 @@ var SCHEDULES = {
 };
 
 var PERSON_INFO = {
-  rn: { ini:'RN', avCls:'av-rn', firstName:'Ricardo', sched:'06:00–14:00', fabril:{start:6,end:9} },
-  cg: { ini:'CG', avCls:'av-cg', firstName:'Cristiana', sched:'08:30–17:30', fabril:null },
-  pf: { ini:'PF', avCls:'av-pf', firstName:'Pedro', sched:'08:30–17:30', fabril:null }
+  rn: { ini:'RN', avCls:'av-rn', firstName:'Ricardo',  sched:'06:00–14:00', fabril:{start:6,end:9} },
+  cg: { ini:'CG', avCls:'av-cg', firstName:'Cristiana',sched:'08:30–17:30', fabril:null },
+  pf: { ini:'PF', avCls:'av-pf', firstName:'Pedro',    sched:'08:30–17:30', fabril:null },
+  ir: { ini:'IR', avCls:'av-ir', firstName:'Inês',     sched:'08:30–17:30', fabril:null }
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -669,6 +677,8 @@ window.onload = function() {
     if (act === 'deleteSchedTemp') { deleteScheduleTempById(id, p); }
     if (act === 'editForcedFab')   { var ff2 = findForcedFab(id, p); if (ff2) openEditForcedFab(ff2, p); }
     if (act === 'deleteForcedFab') { deleteForcedFabById(id, p); }
+    if (act === 'editKpi')         { var kpi = findKpi(id); if (kpi) openEditKpi(kpi, p); }
+    if (act === 'deleteKpi')       { deleteKpiById(id, p); }
   });
   loadData();
 };
@@ -770,9 +780,10 @@ function onDataLoaded(result) {
     var d = typeof result === 'string' ? JSON.parse(result) : result;
     if (d && d.tasks) {
       state.data = d;
-      if (!d.absences)   state.data.absences   = {rn:[],cg:[],pf:[]};
-      if (!d.schedules)  state.data.schedules   = {rn:[],cg:[],pf:[]};
-      if (!d.forcedFab)  state.data.forcedFab   = {rn:[],cg:[],pf:[]};
+      if (!d.absences)   state.data.absences   = {rn:[],cg:[],pf:[],ir:[]};
+      if (!d.schedules)  state.data.schedules   = {rn:[],cg:[],pf:[],ir:[]};
+      if (!d.forcedFab)  state.data.forcedFab   = {rn:[],cg:[],pf:[],ir:[]};
+      if (!d.kpis)       state.data.kpis        = [];
     }
   } catch(e) {}
   if (!state.planDay) state.planDay = isoDate(new Date());
@@ -893,7 +904,7 @@ function setSyncing(on) {
 // ═══════════════════════════════════════════════════════════
 function setPerson(p) {
   state.person = p;
-  ['rn','cg','pf'].forEach(function(k) {
+  ['rn','cg','pf','ir'].forEach(function(k) {
     var el = document.getElementById('pc-' + k);
     if (el) el.classList.toggle('active', k === p);
   });
@@ -902,7 +913,7 @@ function setPerson(p) {
 
 function setTab(t) {
   state.tab = t;
-  ['items','planning','stats'].forEach(function(k) {
+  ['items','planning','kpis','stats'].forEach(function(k) {
     var el = document.getElementById('n-' + k);
     if (el) el.classList.toggle('active', k === t);
   });
@@ -918,6 +929,7 @@ function render() {
     if (el) el.style.display = name === state.tab ? '' : 'none';
   });
   if (state.tab === 'items')    renderItems();
+  if (state.tab === 'kpis')     renderKpis();
   if (state.tab === 'planning') renderPlanning();
   if (state.tab === 'stats')    renderStats();
 }
@@ -1271,7 +1283,7 @@ function renderPlanning() {
 
   // Header row
   html += '<div class="pg-hd time-col">Hora</div>';
-  ['rn','cg','pf'].forEach(function(p) {
+  ['rn','cg','pf','ir'].forEach(function(p) {
     var pi = PERSON_INFO[p];
     html += '<div class="pg-hd"><div class="pav ' + pi.avCls + '" style="width:22px;height:22px;font-size:10px;flex-shrink:0">' + pi.ini + '</div>';
     var effSched = getScheduleForDay(p, state.planDay);
@@ -1285,7 +1297,7 @@ function renderPlanning() {
 
   for (var hh = 6; hh < 18; hh++) {
     html += '<div class="pg-time">' + (hh < 10 ? '0' : '') + hh + ':00</div>';
-    ['rn','cg','pf'].forEach(function(p) {
+    ['rn','cg','pf','ir'].forEach(function(p) {
       var pi = PERSON_INFO[p];
       var sc = getScheduleForDay(p, state.planDay); // uses temp schedule if active
       var cellCls = 'pg-cell';
@@ -1397,7 +1409,7 @@ function renderPlanning() {
 
   // ── Day summary cards ───────────────────────────────────
   html += '<div class="day-sum">';
-  ['rn','cg','pf'].forEach(function(p) {
+  ['rn','cg','pf','ir'].forEach(function(p) {
     var pi = PERSON_INFO[p];
     var sc = getScheduleForDay(p, state.planDay);
     var dayTasks = getDayTasks(p, state.planDay);
@@ -1523,7 +1535,7 @@ var SCHEDULES_BY_PROFILE = {
 };
 
 // Default profiles per person
-var DEFAULT_PROFILE = { rn:'early', cg:'normal', pf:'normal' };
+var DEFAULT_PROFILE = { rn:'early', cg:'normal', pf:'normal', ir:'normal' };
 
 // Get effective profile for a person on a specific day
 function getProfile(p, day) {
@@ -1569,56 +1581,39 @@ function isFixedFabril(p, day, hh) {
 //   • h=9,10: early people available (after 09:15 break); normal people start 08:30
 //   • Coverage slots cover hours where ≥2 people are working
 function buildCoverageSlotsForDay(day, presentPeople) {
-  // ═══════════════════════════════════════════════════════════
-  // BLOCOS DE ESCRITÓRIO (após 06-09 fabril fixo):
-  //   Bloco A [9,10]:   todos os perfis — 1 vai ao fabril
-  //   Bloco B [11,12]:  todos os perfis — 1 vai ao fabril
-  //   Bloco C [13]:     só early (normal em almoço 13-14) — 1 early vai ao fabril
-  //   Bloco D [14,15]:  só normal (early saiu) — 1 vai ao fabril
-  //   Bloco E [16,17]:  só normal — 1 vai ao fabril
-  //
-  // A pausa das early às 9:00-9:15 é aceite (15min sem cobertura do 2º early ok).
-  // ═══════════════════════════════════════════════════════════
+  // REGRA: 2 pessoas em fabril em cada bloco (quando há pessoas suficientes).
+  // Bloco A [9,10]:  todos os perfis presentes
+  // Bloco B [11,12]: todos os perfis presentes
+  // Bloco C [13]:    só early (normal em almoço) — máximo 1
+  // Bloco D [14,15]: só normal (early saiu às 14h)
+  // Bloco E [16,17]: só normal
   var early  = presentPeople.filter(function(p){ return getProfile(p,day)==='early'; });
   var normal = presentPeople.filter(function(p){ return getProfile(p,day)==='normal'; });
   var slots  = [];
 
-  // ── BLOCO A [9,10]: todos elegíveis ───────────────────────────────────
+  // Bloco A [9,10]: todos elegíveis, 2 vão ao fabril
   var eligA = [];
-  early.forEach(function(p){ eligA.push({p:p, bidx:0}); });
-  normal.forEach(function(p){ eligA.push({p:p, bidx:0}); });
-  if (eligA.length >= 1) slots.push({ hours:[9,10], eligible:eligA });
+  early.forEach(function(p){ eligA.push({p:p,bidx:0}); });
+  normal.forEach(function(p){ eligA.push({p:p,bidx:0}); });
+  if (eligA.length >= 1) slots.push({ hours:[9,10],  eligible:eligA, fabrilCount:2 });
 
-  // ── BLOCO B [11,12]: todos elegíveis ──────────────────────────────────
+  // Bloco B [11,12]: todos elegíveis, 2 vão ao fabril
   var eligB = [];
-  early.forEach(function(p){ eligB.push({p:p, bidx:1}); });
-  normal.forEach(function(p){ eligB.push({p:p, bidx:1}); });
-  if (eligB.length >= 1) slots.push({ hours:[11,12], eligible:eligB });
+  early.forEach(function(p){ eligB.push({p:p,bidx:1}); });
+  normal.forEach(function(p){ eligB.push({p:p,bidx:1}); });
+  if (eligB.length >= 1) slots.push({ hours:[11,12], eligible:eligB, fabrilCount:2 });
 
-  // ── BLOCO C [13]: só early (normal em almoço) ─────────────────────────
-  // Se há early presentes: 1 vai ao fabril para cobrir o almoço dos normal
-  if (early.length >= 1) {
-    slots.push({
-      hours: [13],
-      eligible: early.map(function(p){ return {p:p, bidx:2}; })
-    });
-  }
+  // Bloco C [13]: só early, máximo 1 (normal em almoço)
+  if (early.length >= 1)
+    slots.push({ hours:[13], eligible:early.map(function(p){return {p:p,bidx:2};}), fabrilCount:1 });
 
-  // ── BLOCO D [14,15]: só normal (early saiu às 14h) ────────────────────
-  if (normal.length >= 1) {
-    slots.push({
-      hours: [14,15],
-      eligible: normal.map(function(p){ return {p:p, bidx:2}; })
-    });
-  }
+  // Bloco D [14,15]: só normal, 2 vão ao fabril
+  if (normal.length >= 1)
+    slots.push({ hours:[14,15], eligible:normal.map(function(p){return {p:p,bidx:2};}), fabrilCount:2 });
 
-  // ── BLOCO E [16,17]: só normal ────────────────────────────────────────
-  if (normal.length >= 1) {
-    slots.push({
-      hours: [16,17],
-      eligible: normal.map(function(p){ return {p:p, bidx:3}; })
-    });
-  }
+  // Bloco E [16,17]: só normal, 2 vão ao fabril
+  if (normal.length >= 1)
+    slots.push({ hours:[16,17], eligible:normal.map(function(p){return {p:p,bidx:3};}), fabrilCount:2 });
 
   return slots;
 }
@@ -1697,7 +1692,7 @@ function computeFabrilAssignment(day, weeklyOfficeAccum) {
   var fabBidx = { rn:[], cg:[], pf:[] };
 
   // People present today (not absent, not holiday)
-  var presentToday = ['rn','cg','pf'].filter(function(p) {
+  var presentToday = ['rn','cg','pf','ir'].filter(function(p) {
     return !isPersonAbsent(p, day) && !isHoliday(day);
   });
 
@@ -1736,44 +1731,25 @@ function computeFabrilAssignment(day, weeklyOfficeAccum) {
       var need  = weeklyHoursNeeded(p, day);
       var affordable = avail >= need;
 
+      // Algoritmo simples: quem tem mais horas de escritório esta semana vai ao fabril
+      // Sem urgência, sem tarefas — distribuição igualitária pura
       var weeklyOff = (weeklyOfficeAccum[p] || 0);
       var todayFab  = localFabCount[p] || 0;
-
-      // ── PRIMARY: equal distribution of office hours ────────────────
-      // Person with MOST weekly office time gets highest fabril score
-      // (they've had more office → now it's their turn for fabril)
-      var maxWeeklyOff = eligible.reduce(function(m,e2){ return (weeklyOfficeAccum[e2.p]||0)>m?(weeklyOfficeAccum[e2.p]||0):m; }, 0);
-      var minWeeklyOff = eligible.reduce(function(m,e2){ return (weeklyOfficeAccum[e2.p]||0)<m?(weeklyOfficeAccum[e2.p]||0):m; }, 999);
-      var weekRange    = maxWeeklyOff - minWeeklyOff;
-      var weekOffNorm  = weekRange > 0 ? (weeklyOff - minWeeklyOff) / weekRange : 0;
-
-      // Tiebreaker: avoid sending same person to fabril multiple times today
-      var maxTodayFab  = eligible.reduce(function(m,e2){ return (localFabCount[e2.p]||0)>m?(localFabCount[e2.p]||0):m; }, 0);
-      var todayFabNorm = maxTodayFab > 0 ? todayFab / maxTodayFab : 0;
-
-      // Base score: most office time → goes to fabril; already did fabril today → less likely
-      var score = 5 * weekOffNorm - 3 * todayFabNorm;
-
-      // ── SECONDARY: deadline impossibility override ─────────────────
-      // Only override equality if person CANNOT finish without office today
-      // (i.e., remaining office slots this week < hours still needed to finish)
-      // This is binary: impossible → bonus; possible → no change
-      var tentative = fabBidx[p].concat([bidx]);
-      var officeRemaining = weeklyOfficeAvailable(p, tentative, day);
-      var hoursNeeded     = weeklyHoursNeeded(p, day);
-      if (officeRemaining < hoursNeeded) {
-        // This person CANNOT finish on time without office today → protect them
-        // Negative score → they should NOT go to fabril (go to office instead)
-        score -= 20;
-      }
+      var maxTodayFab = eligible.reduce(function(m,e2){ return (localFabCount[e2.p]||0)>m?(localFabCount[e2.p]||0):m; }, 0);
+      // Score: mais horas de escritório acumuladas → vai ao fabril
+      // Desempate: quem foi menos ao fabril hoje tem preferência para escritório
+      var score = (weeklyOff * 10) - (todayFab * 3);
 
       return { p:p, bidx:bidx, score:score };
     });
 
     candidates.sort(function(a,b){ return b.score - a.score; });
-    var chosen = candidates[0];
-    fabBidx[chosen.p].push(chosen.bidx);
-    localFabCount[chosen.p]++;
+    // Pick top-N for fabril (fabrilCount = how many must go to fabril this slot)
+    var n = Math.min(slot.fabrilCount || 1, candidates.length);
+    for (var ci=0; ci<n; ci++) {
+      fabBidx[candidates[ci].p].push(candidates[ci].bidx);
+      localFabCount[candidates[ci].p]++;
+    }
   });
 
   return fabBidx;
@@ -1793,7 +1769,7 @@ function getFabrilAssignmentForDay(day) {
       var d = isoDate(cur);
       var prev = _planCache[d] || computeFabrilAssignment(d, weeklyOffice);
       _planCache[d] = prev;
-      ['rn','cg','pf'].forEach(function(p) {
+      ['rn','cg','pf','ir'].forEach(function(p) {
         weeklyOffice[p] += countOfficHoursFromAssignment(p, d, prev);
       });
     }
@@ -1847,7 +1823,7 @@ function isOnFabrilDuty(p, day, hh) {
 // Check if adding tasks makes deadlines impossible — call after loading data
 function checkDeadlineOverload(day) {
   var warnings = [];
-  ['rn','cg','pf'].forEach(function(p) {
+  ['rn','cg','pf','ir'].forEach(function(p) {
     var tasks = (state.data.tasks[p]||[]).filter(function(t){
       return t.status==='Em curso' && t.end && (!t.start||t.start<=t.end);
     });
@@ -2087,7 +2063,7 @@ function doDeleteEvent(id, p) {
 function renderStats() {
   var html = '<div class="section-title" style="margin-bottom:20px">Estatísticas Globais</div>';
 
-  ['rn','cg','pf'].forEach(function(p) {
+  ['rn','cg','pf','ir'].forEach(function(p) {
     var tasks  = state.data.tasks[p]  || [];
     var events = state.data.events[p] || [];
     var active = tasks.filter(function(t){ return t.status === 'Em curso'; });
@@ -2282,11 +2258,12 @@ function printWeekPlan(wStart, wEnd) {
     cur.setDate(cur.getDate() + 1);
   }
 
-  var persons = ['rn','cg','pf'];
+  var persons = ['rn','cg','pf','ir'];
   var PI_PRINT = {
     rn: { name:'Ricardo Nogueira',  sched:'06:00–14:00', color:'#3b6de8', ini:'RN' },
     cg: { name:'Cristiana Gonçalves',sched:'08:30–17:30', color:'#16a06a', ini:'CG' },
-    pf: { name:'Pedro Fernandes',   sched:'08:30–17:30', color:'#d97316', ini:'PF' }
+    pf: { name:'Pedro Fernandes',   sched:'08:30–17:30', color:'#d97316', ini:'PF' },
+    ir: { name:'Inês Reis',         sched:'08:30–17:30', color:'#8b5cf6', ini:'IR' }
   };
 
   // Build a grid: for each person, for each day, list of slots (hour → label)
@@ -2614,6 +2591,102 @@ function renderScheduleList(p) {
   return html;
 }
 
+function renderKpis() {
+  var p = state.person;
+  var kpis = (state.data.kpis||[]).filter(function(k){return k.person===p;});
+  var html = '<div class="section-header">';
+  html += '<div class="section-title">🎯 KPIs — ' + PERSON_LABELS[p] + '</div>';
+  html += '<button class="btn btn-primary btn-sm" onclick="openNewKpi()">+ Novo KPI</button>';
+  html += '</div>';
+  html += '<div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">';
+  ['rn','cg','pf','ir'].forEach(function(pk) {
+    var a = pk===p;
+    html += '<button onclick="state.person=\'' + pk + '\';renderKpis()" style="padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:' + (a?'var(--navy)':'var(--surface)') + ';color:' + (a?'#fff':'var(--tx1)') + ';cursor:pointer;font-size:12px">' + PERSON_INFO[pk].firstName + '</button>';
+  });
+  html += '</div>';
+  if (!kpis.length) {
+    html += '<div style="color:var(--tx3);text-align:center;padding:32px 0;font-size:13px">Sem KPIs definidos para ' + PERSON_INFO[p].firstName + '</div>';
+  } else {
+    kpis.forEach(function(k) {
+      html += '<div class="task-item" style="margin-bottom:10px">';
+      html += '<div class="task-top"><div class="task-desc">' + esc(k.name) + '</div>';
+      html += '<div style="display:flex;gap:6px">';
+      html += '<button class="icon-btn" data-act="editKpi" data-id="' + k.id + '" data-p="' + p + '">✏️</button>';
+      html += '<button class="icon-btn" data-act="deleteKpi" data-id="' + k.id + '" data-p="' + p + '">🗑️</button>';
+      html += '</div></div><div class="task-meta">';
+      if (k.target) html += '<span class="pill blue">Objetivo: ' + esc(k.target) + (k.unit?' '+esc(k.unit):'') + '</span>';
+      if (k.notes)  html += '<span class="pill gray">' + esc(k.notes) + '</span>';
+      html += '</div></div>';
+    });
+  }
+  document.getElementById('tab-kpis').innerHTML = html;
+}
+function openNewKpi() {
+  var p=state.person;
+  ['kpi-id','kpi-name','kpi-unit','kpi-target','kpi-notes'].forEach(function(id){document.getElementById(id).value='';});
+  document.getElementById('kpi-person').value=p;
+  document.getElementById('modal-kpi-title').textContent='Novo KPI — '+PERSON_LABELS[p];
+  openModal('modal-kpi');
+}
+function openEditKpi(kpi,p) {
+  document.getElementById('kpi-id').value=kpi.id;
+  document.getElementById('kpi-person').value=p;
+  document.getElementById('kpi-name').value=kpi.name||'';
+  document.getElementById('kpi-unit').value=kpi.unit||'';
+  document.getElementById('kpi-target').value=kpi.target||'';
+  document.getElementById('kpi-notes').value=kpi.notes||'';
+  document.getElementById('modal-kpi-title').textContent='Editar KPI';
+  openModal('modal-kpi');
+}
+function saveKpi() {
+  var id=document.getElementById('kpi-id').value;
+  var p=document.getElementById('kpi-person').value;
+  var name=document.getElementById('kpi-name').value.trim();
+  if (!name){showToast('Preenche o nome do KPI','error');return;}
+  var payload={person:p,name:name,unit:document.getElementById('kpi-unit').value.trim(),target:document.getElementById('kpi-target').value.trim(),notes:document.getElementById('kpi-notes').value.trim()};
+  if (id) payload.id=id;
+  closeModal('modal-kpi');
+  callServer(id?'editKpi':'addKpi', payload, function(err,res){
+    if (err||(res&&res.error)){showToast('Erro ao guardar KPI','error');return;}
+    showToast((id?'KPI actualizado':'KPI adicionado')+' ✓','success'); loadData();
+  });
+}
+function deleteKpiById(id,p){
+  if (!confirm('Eliminar este KPI?')) return;
+  callServer('deleteKpi',{id:id,person:p},function(err,res){
+    if (err||(res&&res.error)){showToast('Erro','error');return;}
+    showToast('KPI eliminado ✓','success'); loadData();
+  });
+}
+function findKpi(id){
+  var kpis=state.data.kpis||[];
+  for (var i=0;i<kpis.length;i++){if (kpis[i].id===id) return kpis[i];}
+  return null;
+}
+
 </script>
+<!-- MODAL KPI -->
+<div class="overlay hidden" id="modal-kpi">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-kpi-title">Novo KPI</div>
+      <button class="icon-btn" onclick="closeModal('modal-kpi')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="kpi-id"><input type="hidden" id="kpi-person">
+      <div class="field"><label class="label">Nome do KPI</label><input type="text" id="kpi-name" placeholder="Ex: Taxa de conclusão de tarefas"></div>
+      <div class="row2">
+        <div class="field"><label class="label">Objetivo</label><input type="text" id="kpi-target" placeholder="Ex: 90"></div>
+        <div class="field"><label class="label">Unidade</label><input type="text" id="kpi-unit" placeholder="Ex: %"></div>
+      </div>
+      <div class="field"><label class="label">Notas</label><input type="text" id="kpi-notes" placeholder="Descrição ou contexto..."></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-kpi')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveKpi()">Guardar</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
