@@ -169,7 +169,7 @@ textarea{resize:vertical;min-height:70px}
 .day-btn.hol.sel{background:#2e7d32;color:#fff;border-color:#2e7d32}
 .day-btn.tod{border-color:var(--accent);color:var(--accent)}
 .pg-wrap{overflow-x:auto;margin-bottom:16px}
-.pg{display:grid;grid-template-columns:52px repeat(3,1fr);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;min-width:560px;background:var(--surface);box-shadow:var(--s1)}
+.pg{display:grid;grid-template-columns:52px repeat(4,1fr);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;min-width:560px;background:var(--surface);box-shadow:var(--s1)}
 .pg-hd{background:var(--navy);color:#fff;padding:10px 12px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:7px;border-bottom:1px solid rgba(255,255,255,.08)}
 .pg-hd.time-col{background:#0e1745;justify-content:center;font-size:10px;color:rgba(255,255,255,.4)}
 .pg-time{font-size:10px;color:var(--tx3);padding:3px 5px 0;border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--surface2);min-height:38px;display:flex;align-items:flex-start;justify-content:flex-end}
@@ -191,7 +191,7 @@ textarea{resize:vertical;min-height:70px}
 .pg-legend{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px}
 .leg{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--tx2)}
 .leg-box{width:13px;height:13px;border-radius:3px;flex-shrink:0}
-.day-sum{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.day-sum{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
 .ds-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);padding:13px;box-shadow:var(--s1)}
 .ds-head{display:flex;align-items:center;gap:8px;margin-bottom:9px}
 .ds-av{width:27px;height:27px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff}
@@ -230,7 +230,7 @@ textarea{resize:vertical;min-height:70px}
       </button>
       <button class="pcard" id="pc-cg" data-person="cg" onclick="setPerson('cg')">
         <div class="pav av-cg">CG</div>
-        <div style="flex:1;min-width:0"><div class="pname">Cristiana Gonçalves</div><div class="psched">08:30–17:30</div></div>
+        <div style="flex:1;min-width:0"><div class="pname">Cristiana Gonçalves</div><div class="psched">06:00–14:00</div></div>
       </button>
       <button class="pcard" id="pc-pf" data-person="pf" onclick="setPerson('pf')">
         <div class="pav av-pf">PF</div>
@@ -245,7 +245,7 @@ textarea{resize:vertical;min-height:70px}
       <div class="sb-label" style="margin-bottom:8px">Vistas</div>
       <button class="nitem active" id="n-items"    onclick="setTab('items')">   <span class="ni-ico">📋</span> Tarefas e Eventos</button>
       <button class="nitem"        id="n-planning" onclick="setTab('planning')"><span class="ni-ico">📅</span> Planeamento</button>
-      <button class="nitem"        id="n-kpis"     onclick="setTab('kpis')">   <span class="ni-ico">🎯</span> KPIs</button>
+      <button class="nitem"        id="n-kpis"     onclick="setTab('kpis')">   <span class="ni-ico">🎯</span> KPIs</button>
       <button class="nitem"        id="n-stats"    onclick="setTab('stats')">   <span class="ni-ico">📊</span> Estatísticas</button>
     </div>
     <div class="sb-footer">
@@ -543,7 +543,7 @@ textarea{resize:vertical;min-height:70px}
 
 // Script URL injected server-side — enables fetch() without Google session
 // SCRIPT_URL: filled by Apps Script server, or auto-detected from page URL
-var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyWgmYu4nF-un0ggOeQ1iPy99EcaXyLuS3GVtrn3gJupvn0Aceh80Nb7NkYBt2ABrcSMQ/exec';
+var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwRbGoB8tY5o1HR11ePm3LPdLB-z9i-Gp6pBPkchkNFErU4cn75gyDFSRpj6YGqXCkSGg/exec';
 
 // ═══════════════════════════════════════════════════════════
 //  STATE
@@ -570,7 +570,7 @@ var SCHEDULES = {
 
 var PERSON_INFO = {
   rn: { ini:'RN', avCls:'av-rn', firstName:'Ricardo',  sched:'06:00–14:00', fabril:{start:6,end:9} },
-  cg: { ini:'CG', avCls:'av-cg', firstName:'Cristiana',sched:'08:30–17:30', fabril:null },
+  cg: { ini:'CG', avCls:'av-cg', firstName:'Cristiana',sched:'06:00–14:00', fabril:{start:6,end:9} },
   pf: { ini:'PF', avCls:'av-pf', firstName:'Pedro',    sched:'08:30–17:30', fabril:null },
   ir: { ini:'IR', avCls:'av-ir', firstName:'Inês',     sched:'08:30–17:30', fabril:null }
 };
@@ -922,9 +922,9 @@ function setTab(t) {
 
 function render() {
   if (!state.loaded) return;
-  var titles = {items: 'Tarefas e Eventos', planning: 'Planeamento', stats: 'Estatísticas'};
+  var titles = {items: 'Tarefas e Eventos', planning: 'Planeamento', kpis: 'KPIs', stats: 'Estatísticas'};
   document.getElementById('tbar-title').textContent = (titles[state.tab] || state.tab) + ' — ' + PERSON_LABELS[state.person];
-  ['items','planning','stats'].forEach(function(name) {
+  ['items','planning','kpis','stats'].forEach(function(name) {
     var el = document.getElementById('tab-' + name);
     if (el) el.style.display = name === state.tab ? '' : 'none';
   });
@@ -1535,7 +1535,7 @@ var SCHEDULES_BY_PROFILE = {
 };
 
 // Default profiles per person
-var DEFAULT_PROFILE = { rn:'early', cg:'normal', pf:'normal', ir:'normal' };
+var DEFAULT_PROFILE = { rn:'early', cg:'early',  pf:'normal', ir:'normal' };
 
 // Get effective profile for a person on a specific day
 function getProfile(p, day) {
@@ -2261,7 +2261,7 @@ function printWeekPlan(wStart, wEnd) {
   var persons = ['rn','cg','pf','ir'];
   var PI_PRINT = {
     rn: { name:'Ricardo Nogueira',  sched:'06:00–14:00', color:'#3b6de8', ini:'RN' },
-    cg: { name:'Cristiana Gonçalves',sched:'08:30–17:30', color:'#16a06a', ini:'CG' },
+    cg: { name:'Cristiana Gonçalves',sched:'06:00–14:00', color:'#16a06a', ini:'CG' },
     pf: { name:'Pedro Fernandes',   sched:'08:30–17:30', color:'#d97316', ini:'PF' },
     ir: { name:'Inês Reis',         sched:'08:30–17:30', color:'#8b5cf6', ini:'IR' }
   };
