@@ -2596,7 +2596,10 @@ function renderKpis() {
   var kpis = (state.data.kpis||[]).filter(function(k){return k.person===p;});
   var html = '<div class="section-header">';
   html += '<div class="section-title">🎯 KPIs — ' + PERSON_LABELS[p] + '</div>';
+  html += '<div style="display:flex;gap:6px">';
   html += '<button class="btn btn-primary btn-sm" onclick="openNewKpi()">+ Novo KPI</button>';
+  html += '<button class="btn btn-outline btn-sm" onclick="openImportPDF()">📄 Importar PDF</button>';
+  html += '</div>';
   html += '</div>';
   html += '<div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">';
   ['rn','cg','pf','ir'].forEach(function(pk) {
@@ -2664,6 +2667,195 @@ function findKpi(id){
   return null;
 }
 
+// ═══ IMPORTAR PDF ═══
+function openImportPDF() {
+  var inp = document.getElementById('import-pdf-input');
+  inp.value = '';
+  inp.click();
+}
+
+function handleImportPDF(input) {
+  var file = input.files[0];
+  if (!file) return;
+  document.getElementById('import-preview-body').innerHTML =
+    '<div style="text-align:center;padding:40px;color:var(--tx2)">⏳ A ler PDF...</div>';
+  document.getElementById('import-confirm-btn').disabled = true;
+  openModal('modal-import');
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    loadPdfJs(function() {
+      extractPdfText(new Uint8Array(e.target.result), function(text) {
+        renderImportPreview(parsePlanningPDF(text));
+      });
+    });
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function loadPdfJs(cb) {
+  if (window.pdfjsLib) { cb(); return; }
+  var s = document.createElement('script');
+  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+  s.onload = function() {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    cb();
+  };
+  s.onerror = function() {
+    document.getElementById('import-preview-body').innerHTML =
+      '<div style="color:var(--red);padding:16px">Erro ao carregar leitor de PDF.</div>';
+  };
+  document.head.appendChild(s);
+}
+
+function extractPdfText(data, cb) {
+  window.pdfjsLib.getDocument({data: data}).promise.then(function(pdf) {
+    var n = pdf.numPages, pages = [], done = 0;
+    for (var i = 1; i <= n; i++) {
+      (function(pg) {
+        pdf.getPage(pg).then(function(page) {
+          page.getTextContent().then(function(tc) {
+            pages[pg-1] = tc.items.map(function(it){ return it.str; }).join('\n');
+            if (++done === n) cb(pages.join('\n'));
+          });
+        });
+      })(i);
+    }
+  }).catch(function() {
+    document.getElementById('import-preview-body').innerHTML =
+      '<div style="color:var(--red);padding:16px">Erro ao processar PDF.</div>';
+  });
+}
+
+function ptDate(d) {
+  // DD/MM/YYYY → YYYY-MM-DD
+  var p = d.split('/');
+  return p.length === 3 ? p[2]+'-'+p[1]+'-'+p[0] : d;
+}
+
+function parsePlanningPDF(text) {
+  var result = { person_key: null, tasks: [], kpis: [] };
+
+  // Detect person
+  var PMAP = {
+    'Ricardo Nogueira':'rn',
+    'Cristiana Gonçalves':'cg', 'Cristiana Goncalves':'cg',
+    'Pedro Fernandes':'pf',
+    'Inês Reis':'ir', 'Ines Reis':'ir'
+  };
+  Object.keys(PMAP).forEach(function(n){ if (text.indexOf(n) >= 0) result.person_key = PMAP[n]; });
+
+  // Extract tasks: "Tarefa N - Name" then "Início: DD/MM/YYYY Deadline: DD/MM/YYYY"
+  var tRe = /Tarefa\s+\d+\s*[-–—]\s*([^\n\r]+)[\s\S]{0,600}?Início:\s*(\d{2}\/\d{2}\/\d{4})\s+Deadline:\s*(\d{2}\/\d{2}\/\d{4})/g;
+  var m, seen = {};
+  while ((m = tRe.exec(text)) !== null) {
+    var desc = m[1].trim();
+    if (!seen[desc]) {
+      seen[desc] = 1;
+      result.tasks.push({ desc: desc, start: ptDate(m[2]), end: ptDate(m[3]), hours: 8 });
+    }
+  }
+
+  // Extract KPIs section
+  var ks = text.indexOf('KPIs mensais');
+  var ke = text.indexOf('MÊS 1');
+  if (ks >= 0) {
+    var kSec = '\n' + text.substring(ks, ke > ks ? ke : text.length);
+    // Pattern A: each field on its own line (\n1\nName\n85\n%\nNotes)
+    var kReA = /\n(\d)\n([\s\S]+?)\n(\d+)\n(%|\w+)\n([\s\S]+?)(?=\n\d\n|$)/g;
+    var km;
+    while ((km = kReA.exec(kSec)) !== null) {
+      var name = km[2].replace(/\n/g,' ').trim();
+      var notes = km[5].replace(/\n/g,' ').trim();
+      if (name.length > 5 && !/^(#|KPI|Notas|Objetivo|Unidade)/.test(name)) {
+        result.kpis.push({ name: name, target: km[3], unit: km[4], notes: notes });
+      }
+    }
+    // Pattern B fallback: all inline "1 Name 85 % Notes"
+    if (!result.kpis.length) {
+      var kReB = /\b(\d)\s+([\wÀ-úçãõêé\s\/\(\)\-]+?)\s+(\d+)\s+(%|\w+)/g;
+      while ((km = kReB.exec(kSec)) !== null) {
+        var name2 = km[2].trim();
+        if (name2.length > 8 && !/^(KPI|Notas|Objetivo|Unidade)/.test(name2)) {
+          result.kpis.push({ name: name2, target: km[3], unit: km[4], notes: '' });
+        }
+      }
+    }
+  }
+  return result;
+}
+
+window._importData = null;
+
+function renderImportPreview(data) {
+  window._importData = data;
+  var p = data.person_key;
+  var pName = p ? (PERSON_LABELS[p] || p) : '⚠️ Pessoa não identificada';
+  var cls = p ? 'blue' : 'red';
+  var html = '<div style="margin-bottom:14px"><span class="pill ' + cls + '">👤 ' + esc(pName) + '</span></div>';
+
+  if (data.tasks.length) {
+    html += '<div style="font-weight:600;font-size:12px;text-transform:uppercase;color:var(--tx2);margin-bottom:8px">📌 Tarefas (' + data.tasks.length + ')</div>';
+    data.tasks.forEach(function(t) {
+      html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px">'
+            + '<div style="font-size:13px;font-weight:500">' + esc(t.desc) + '</div>'
+            + '<div style="font-size:11px;color:var(--tx2);margin-top:3px">'
+            + formatDate(t.start) + ' → ' + formatDate(t.end) + ' · ' + t.hours + 'h</div>'
+            + '</div>';
+    });
+  } else {
+    html += '<div style="color:var(--tx3);font-size:13px;margin-bottom:10px">Sem tarefas detectadas.</div>';
+  }
+
+  if (data.kpis.length) {
+    html += '<div style="font-weight:600;font-size:12px;text-transform:uppercase;color:var(--tx2);margin:12px 0 8px">🎯 KPIs (' + data.kpis.length + ')</div>';
+    data.kpis.forEach(function(k) {
+      html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px">'
+            + '<div style="font-size:13px;font-weight:500">' + esc(k.name) + '</div>'
+            + '<div style="font-size:11px;color:var(--tx2);margin-top:2px">Objetivo: ' + esc(k.target) + ' ' + esc(k.unit) + '</div>'
+            + '</div>';
+    });
+  } else {
+    html += '<div style="color:var(--tx3);font-size:13px">Sem KPIs detectados.</div>';
+  }
+
+  document.getElementById('import-preview-body').innerHTML = html;
+  document.getElementById('import-confirm-btn').disabled =
+    !p || (data.tasks.length + data.kpis.length === 0);
+}
+
+function confirmImport() {
+  var data = window._importData;
+  if (!data || !data.person_key) return;
+  var p = data.person_key;
+  var items = [];
+  (data.tasks || []).forEach(function(t) {
+    items.push({ action:'addTask', payload:{ person:p, desc:t.desc, hours:t.hours||8,
+      start:t.start, end:t.end, status:'Em curso', notes:'' }});
+  });
+  (data.kpis || []).forEach(function(k) {
+    items.push({ action:'addKpi', payload:{ person:p, name:k.name,
+      target:k.target||'', unit:k.unit||'', notes:k.notes||'' }});
+  });
+  if (!items.length) { closeModal('modal-import'); return; }
+
+  var btn = document.getElementById('import-confirm-btn');
+  btn.disabled = true; btn.textContent = 'A guardar...';
+  var done = 0, total = items.length, errors = 0;
+
+  items.forEach(function(item) {
+    callServer(item.action, item.payload, function(err) {
+      if (err) errors++;
+      if (++done === total) {
+        closeModal('modal-import');
+        showToast('Importado: ' + (total-errors) + '/' + total + ' itens ✓', errors ? 'error' : 'success');
+        btn.disabled = false; btn.textContent = '✓ Confirmar Importação';
+        loadData();
+      }
+    });
+  });
+}
+
 </script>
 <!-- MODAL KPI -->
 <div class="overlay hidden" id="modal-kpi">
@@ -2687,6 +2879,22 @@ function findKpi(id){
     </div>
   </div>
 </div>
+
+<!-- MODAL IMPORT PDF -->
+<div class="overlay hidden" id="modal-import">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <div class="modal-title">📄 Importar PDF — Pré-visualização</div>
+      <button class="icon-btn" onclick="closeModal('modal-import')">✕</button>
+    </div>
+    <div class="modal-body" id="import-preview-body" style="max-height:60vh;overflow-y:auto"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-import')">Cancelar</button>
+      <button class="btn btn-primary" id="import-confirm-btn" onclick="confirmImport()" disabled>✓ Confirmar Importação</button>
+    </div>
+  </div>
+</div>
+<input type="file" id="import-pdf-input" accept=".pdf" style="display:none" onchange="handleImportPDF(this)">
 
 </body>
 </html>
