@@ -1688,8 +1688,8 @@ function computeFabrilAssignment(day, weeklyOfficeAccum) {
   // Urgency scores no longer drive fabril rotation.
   // Office time is distributed equally; only deadline impossibility overrides balance.
   // (getUrgencyScore still used in weeklyHoursNeeded for impossibility detection)
-  var localFabCount = { rn:0, cg:0, pf:0 };
-  var fabBidx = { rn:[], cg:[], pf:[] };
+  var localFabCount = { rn:0, cg:0, pf:0, ir:0 };
+  var fabBidx = { rn:[], cg:[], pf:[], ir:[] };
 
   // People present today (not absent, not holiday)
   var presentToday = ['rn','cg','pf','ir'].filter(function(p) {
@@ -1759,7 +1759,7 @@ function getFabrilAssignmentForDay(day) {
   if (_planCache[day]) return _planCache[day];
 
   // Accumulate office hours from Monday of current week up to (but not including) today
-  var weeklyOffice = { rn:0, cg:0, pf:0 };
+  var weeklyOffice = { rn:0, cg:0, pf:0, ir:0 };
   var weekMon = getWeekMon(new Date(day + 'T12:00:00'), 0);
   var cur = new Date(weekMon);
 
