@@ -962,6 +962,7 @@ function renderItems() {
   html += '<button class="btn btn-outline btn-sm" onclick="openNewAbsence()">🏠 Ausência</button>';
   html += '<button class="btn btn-outline btn-sm" onclick="openNewScheduleTemp()">⏰ Horário</button>';
   html += '<button class="btn btn-outline btn-sm" onclick="openNewForcedFab()">🏭 Fabril</button>';
+  html += '<button class="btn btn-outline btn-sm" onclick="openImportPDF()">📄 Importar PDF</button>';
   html += '</div></div>';
   if (todayHoliday) {
     html += '<div style="background:#e8f5e9;border:1px solid #4caf50;border-radius:8px;padding:10px 14px;margin-bottom:14px;color:#2e7d32;font-size:13px">';
@@ -1035,9 +1036,10 @@ function renderTaskItem(t, p) {
   var deadline = t.end ? formatDate(t.end) : '—';
   var overdue = t.end && !isDone && new Date(t.end) < new Date();
 
+  var hasNotes = !!(t.notes && t.notes.trim());
   var html = '<div class="task-item' + (isDone ? ' done' : '') + '">';
   html += '<div class="task-top">';
-  html += '<div class="task-desc">' + esc(t.desc) + '</div>';
+  html += '<div class="task-desc"' + (hasNotes ? ' onclick="toggleTaskDesc(\'' + t.id + '\')" style="cursor:pointer;user-select:none"' : '') + '>' + esc(t.desc) + (hasNotes ? ' <span style="font-size:10px;opacity:.4">▾</span>' : '') + '</div>';
   html += '<div class="task-actions">';
   if (!isDone) {
     html += '<button class="icon-btn" title="Editar" data-act="editTask" data-id="' + t.id + '" data-p="' + p + '">✏️</button>';
@@ -1057,8 +1059,17 @@ function renderTaskItem(t, p) {
   }
   html += '<span class="pill ' + (isDone ? 'green' : 'blue') + '">' + t.status + '</span>';
   html += '</div>';
+  if (hasNotes) {
+    html += '<div id="tdn-' + t.id + '" style="display:none;padding:8px 14px 10px;font-size:12px;color:var(--tx2);line-height:1.6;border-top:1px solid var(--border);white-space:pre-wrap">' + esc(t.notes.trim()) + '</div>';
+  }
   html += '</div>';
   return html;
+}
+
+function toggleTaskDesc(id) {
+  var el = document.getElementById('tdn-' + id);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
 function openNewTask() {
@@ -2794,13 +2805,21 @@ function renderImportPreview(data) {
   var cls = p ? 'blue' : 'red';
   var html = '<div style="margin-bottom:14px"><span class="pill ' + cls + '">👤 ' + esc(pName) + '</span></div>';
 
+  var existDescs = p ? (state.data.tasks[p]||[]).map(function(t){ return t.desc.trim().toLowerCase(); }) : [];
+  var existKpis  = p ? (state.data.kpis||[]).filter(function(k){ return k.person===p; }).map(function(k){ return k.name.trim().toLowerCase(); }) : [];
+  var newCount = 0;
+
   if (data.tasks.length) {
     html += '<div style="font-weight:600;font-size:12px;text-transform:uppercase;color:var(--tx2);margin-bottom:8px">📌 Tarefas (' + data.tasks.length + ')</div>';
     data.tasks.forEach(function(t) {
-      html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px">'
+      var dup = existDescs.indexOf(t.desc.trim().toLowerCase()) >= 0;
+      if (!dup) newCount++;
+      html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px;opacity:' + (dup?'.45':'1') + '">'
+            + '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">'
             + '<div style="font-size:13px;font-weight:500">' + esc(t.desc) + '</div>'
-            + '<div style="font-size:11px;color:var(--tx2);margin-top:3px">'
-            + formatDate(t.start) + ' → ' + formatDate(t.end) + ' · ' + t.hours + 'h</div>'
+            + (dup ? '<span class="pill gray" style="font-size:10px;flex-shrink:0">já existe</span>' : '')
+            + '</div>'
+            + '<div style="font-size:11px;color:var(--tx2);margin-top:3px">' + formatDate(t.start) + ' → ' + formatDate(t.end) + ' · ' + t.hours + 'h</div>'
             + '</div>';
     });
   } else {
@@ -2810,9 +2829,14 @@ function renderImportPreview(data) {
   if (data.kpis.length) {
     html += '<div style="font-weight:600;font-size:12px;text-transform:uppercase;color:var(--tx2);margin:12px 0 8px">🎯 KPIs (' + data.kpis.length + ')</div>';
     data.kpis.forEach(function(k) {
-      html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px">'
+      var dup = existKpis.indexOf(k.name.trim().toLowerCase()) >= 0;
+      if (!dup) newCount++;
+      html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px;opacity:' + (dup?'.45':'1') + '">'
+            + '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">'
             + '<div style="font-size:13px;font-weight:500">' + esc(k.name) + '</div>'
-            + '<div style="font-size:11px;color:var(--tx2);margin-top:2px">Objetivo: ' + esc(k.target) + ' ' + esc(k.unit) + '</div>'
+            + (dup ? '<span class="pill gray" style="font-size:10px;flex-shrink:0">já existe</span>' : '')
+            + '</div>'
+            + (k.target ? '<div style="font-size:11px;color:var(--tx2);margin-top:2px">Objetivo: ' + esc(k.target) + ' ' + esc(k.unit) + '</div>' : '')
             + '</div>';
     });
   } else {
@@ -2820,22 +2844,31 @@ function renderImportPreview(data) {
   }
 
   document.getElementById('import-preview-body').innerHTML = html;
-  document.getElementById('import-confirm-btn').disabled =
-    !p || (data.tasks.length + data.kpis.length === 0);
+  var btn = document.getElementById('import-confirm-btn');
+  btn.disabled = !p || newCount === 0;
+  var skipped = (data.tasks.length + data.kpis.length) - newCount;
+  btn.textContent = newCount > 0
+    ? '✓ Importar ' + newCount + ' novo' + (newCount > 1 ? 's' : '') + (skipped > 0 ? ' (ignorar ' + skipped + ' duplicado' + (skipped>1?'s':'') + ')' : '')
+    : 'Tudo já existe';
 }
+
 
 function confirmImport() {
   var data = window._importData;
   if (!data || !data.person_key) return;
   var p = data.person_key;
+  var existD = (state.data.tasks[p]||[]).map(function(t){ return t.desc.trim().toLowerCase(); });
+  var existK = (state.data.kpis||[]).filter(function(k){ return k.person===p; }).map(function(k){ return k.name.trim().toLowerCase(); });
   var items = [];
   (data.tasks || []).forEach(function(t) {
-    items.push({ action:'addTask', payload:{ person:p, desc:t.desc, hours:t.hours||8,
-      start:t.start, end:t.end, status:'Em curso', notes:'' }});
+    if (existD.indexOf(t.desc.trim().toLowerCase()) === -1)
+      items.push({ action:'addTask', payload:{ person:p, desc:t.desc, hours:t.hours||8,
+        start:t.start, end:t.end, status:'Em curso', notes:'' }});
   });
   (data.kpis || []).forEach(function(k) {
-    items.push({ action:'addKpi', payload:{ person:p, name:k.name,
-      target:k.target||'', unit:k.unit||'', notes:k.notes||'' }});
+    if (existK.indexOf(k.name.trim().toLowerCase()) === -1)
+      items.push({ action:'addKpi', payload:{ person:p, name:k.name,
+        target:k.target||'', unit:k.unit||'', notes:k.notes||'' }});
   });
   if (!items.length) { closeModal('modal-import'); return; }
 
