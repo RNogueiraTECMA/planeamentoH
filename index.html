@@ -936,6 +936,9 @@ function renderItems() {
   });
   var active  = tasks.filter(function(t){ return t.status !== 'Concluída' && t.status !== 'Concluida'; });
   var done    = tasks.filter(function(t){ return t.status === 'Concluída' || t.status === 'Concluida'; });
+  var sortByStart = function(a,b){ return (a.start||'') < (b.start||'') ? -1 : (a.start||'') > (b.start||'') ? 1 : 0; };
+  active.sort(sortByStart);
+  done.sort(sortByStart);
   var evUp    = events.filter(function(e){ return new Date(e.date) >= today; });
   var evPast  = events.filter(function(e){ return new Date(e.date) < today; });
 
@@ -995,6 +998,7 @@ function renderTasks() {
   });
   var active = tasks.filter(function(t){ return t.status !== 'Concluída' && t.status !== 'Concluida'; });
   var done   = tasks.filter(function(t){ return t.status === 'Concluída' || t.status === 'Concluida'; });
+  active.sort(sortByStart); done.sort(sortByStart);
 
   var html = '<div class="section-header">';
   html += '<div class="section-title">Tarefas — ' + PERSON_LABELS[p] + '</div>';
