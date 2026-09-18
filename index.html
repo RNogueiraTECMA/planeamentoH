@@ -2749,106 +2749,41 @@ function ptDate(d) {
 function parsePlanningPDF(text) {
   var result = { person_key: null, tasks: [], kpis: [] };
 
-  // Detect person
+  // Strip page number artefacts
+  var cleaned = text.replace(/P\u00e1gina\s*\d+/gi, '').replace(/\r/g, '\n');
+
   var PMAP = {
-    'Ricardo Nogueira':'rn', 'Cristiana Gonçalves':'cg', 'Cristiana Goncalves':'cg',
-    'Pedro Fernandes':'pf', 'Inês Reis':'ir', 'Ines Reis':'ir'
+    'Ricardo Nogueira':'rn', 'Cristiana Gon\u00e7alves':'cg', 'Cristiana Goncalves':'cg',
+    'Pedro Fernandes':'pf', 'In\u00eas Reis':'ir', 'Ines Reis':'ir'
   };
-  Object.keys(PMAP).forEach(function(n){ if (text.indexOf(n) >= 0) result.person_key = PMAP[n]; });
+  var pm = cleaned.match(/PESSOA:\s*(.+)/);
+  if (pm) { var pN=pm[1].trim(); Object.keys(PMAP).forEach(function(n){ if (pN.indexOf(n)>=0) result.person_key=PMAP[n]; }); }
+  if (!result.person_key) Object.keys(PMAP).forEach(function(n){ if (cleaned.indexOf(n)>=0) result.person_key=PMAP[n]; });
 
-  // Clean lines: remove page headers, empty lines
-  var rawLines = text.split('\n').map(function(l){ return l.trim(); });
+  var lines = cleaned.split('\n').map(function(l){ return l.trim(); }).filter(Boolean);
+  var curTask = null, curKpi = null;
 
-  // Rejoin split task headers (e.g. "Tarefa 1 -" on one line, title on next)
-  var lines = [];
-  var k = 0;
-  while (k < rawLines.length) {
-    var l = rawLines[k];
-    if (!l || /^TecmaFoods\s*\|/.test(l)) { k++; continue; }
-    // "Tarefa N" alone or "Tarefa N -" alone → rejoin with next line
-    if (/^Tarefa\s+\d+\s*[-–—‐]?\s*$/.test(l) && k+1 < rawLines.length) {
-      var next = rawLines[k+1].trim();
-      lines.push((l + ' ' + next).replace(/\s+/g,' '));
-      k += 2; continue;
-    }
-    lines.push(l);
-    k++;
+  function flushTask() {
+    if (curTask && curTask.desc && curTask.start && curTask.end) result.tasks.push(curTask);
+    curTask = null;
+  }
+  function flushKpi() {
+    if (curKpi && curKpi.name) result.kpis.push(curKpi);
+    curKpi = null;
   }
 
-  // ── Parse tasks ──────────────────────────────────────────────────────────
-  var seen = {};
-  var i = 0;
-  while (i < lines.length) {
-    var line = lines[i];
-    var tm = line.match(/^Tarefa\s+\d+\s*[-–—‐]\s*(.+)$/);
-    if (tm) {
-      var taskTitle = tm[1].trim();
-      // Search for dates in window of up to 10 following lines
-      var winText = lines.slice(i+1, Math.min(i+11, lines.length)).join(' ');
-      var dm = winText.match(/Início:\s*(\d{2}\/\d{2}\/\d{4}).*?Deadline:\s*(\d{2}\/\d{2}\/\d{4})/);
-      if (dm) {
-        // Advance j past ALL date-related lines (Início:, Deadline:, bare dates, month header)
-        var j = i + 1;
-        while (j < Math.min(i+11, lines.length)) {
-          var ll = lines[j];
-          var isDateLine = /Início:/i.test(ll) || /Deadline:/i.test(ll) ||
-                           /^\d{2}\/\d{2}\/\d{4}/.test(ll) ||
-                           /^\d{4}-\d{2}-\d{2}/.test(ll);
-          var isSectionHeader = /^Tarefa\s+\d+/.test(ll) || /^MÊS\s+\d+/.test(ll) ||
-                                /^KPIs? mensais/i.test(ll) || /^Objetivo mensal:/.test(ll);
-          if (isSectionHeader) break;
-          if (isDateLine) { j++; continue; }
-          break; // first non-date, non-header line = start of description
-        }
-        // Collect description: stop at next task/section header
-        var descLines = [];
-        while (j < lines.length) {
-          var dl = lines[j];
-          if (/^Tarefa\s+\d+\s*[-–—‐]/.test(dl) || /^MÊS\s+\d+/.test(dl) ||
-              /^KPIs? mensais/i.test(dl) || /^Objetivo mensal:/.test(dl) ||
-              /^\d{2}\/\d{2}\/\d{4}\s+[Aa]\s+\d{2}\/\d{2}\/\d{4}$/.test(dl)) { break; }
-          // Filter out any date fragments that leaked through
-          if (/^Início:/i.test(dl) || /^Deadline:/i.test(dl) ||
-              /^\d{2}\/\d{2}\/\d{4}\s*$/.test(dl)) { j++; continue; }
-          if (dl) descLines.push(dl);
-          j++;
-        }
-        if (!seen[taskTitle]) {
-          seen[taskTitle] = 1;
-          result.tasks.push({
-            desc: taskTitle, start: ptDate(dm[1]), end: ptDate(dm[2]),
-            hours: 0, notes: descLines.join('\n').trim()
-          });
-        }
-        i = j; continue;
-      }
-    }
-    i++;
-  }
-
-  // ── Parse KPIs ───────────────────────────────────────────────────────────
-  var ks = text.indexOf('KPIs mensais'), ke = text.indexOf('MÊS 1');
-  if (ks >= 0) {
-    var kSec = '\n' + text.substring(ks, ke > ks ? ke : text.length);
-    var kReA = /\n(\d)\n([\s\S]+?)\n(\d+)\n(%|\w+)\n([\s\S]+?)(?=\n\d\n|$)/g;
-    var km;
-    while ((km = kReA.exec(kSec)) !== null) {
-      var name = km[2].replace(/\n/g,' ').trim();
-      var notes = km[5].replace(/\n/g,' ').trim();
-      if (name.length > 5 && !/^(#|KPI|Notas|Objetivo|Unidade)/.test(name))
-        result.kpis.push({ name: name, target: km[3], unit: km[4], notes: notes });
-    }
-    if (!result.kpis.length) {
-      // Fallback: look for "N Name ... NN %" on cleaner text
-      var cleanKpi = kSec.replace(/\n/g,' ');
-      var kReB = /\b(\d)\s+([\wÀ-úçãõêé\s\/\(\)\-]+?)\s+(\d+)\s+(%|\w+)/g;
-      while ((km = kReB.exec(cleanKpi)) !== null) {
-        var name2 = km[2].trim();
-        if (name2.length > 8 && !/^(KPI|Notas|Objetivo|Unidade)/.test(name2))
-          result.kpis.push({ name: name2, target: km[3], unit: km[4], notes: '' });
-      }
-    }
-  }
+  lines.forEach(function(line) {
+    var m;
+    if      ((m = line.match(/^TAREFA:\s*(.+)$/)))    { flushTask(); flushKpi(); curTask = {desc:m[1].trim(),start:'',end:'',hours:0,notes:''}; }
+    else if ((m = line.match(/^INICIO:\s*(\d{2}\/\d{2}\/\d{4})/)))   { if (curTask) curTask.start = ptDate(m[1]); }
+    else if ((m = line.match(/^DEADLINE:\s*(\d{2}\/\d{2}\/\d{4})/))) { if (curTask) curTask.end   = ptDate(m[1]); }
+    else if ((m = line.match(/^DESCRICAO:\s*(.+)$/))) { if (curTask) curTask.notes = m[1].trim(); }
+    else if ((m = line.match(/^KPI:\s*(.+)$/)))       { flushTask(); flushKpi(); curKpi = {name:m[1].trim(),target:'',unit:'',notes:''}; }
+    else if ((m = line.match(/^OBJETIVO:\s*(.+)$/)))  { if (curKpi) curKpi.target = m[1].trim(); }
+    else if ((m = line.match(/^UNIDADE:\s*(.+)$/)))   { if (curKpi) curKpi.unit   = m[1].trim(); }
+    else if ((m = line.match(/^NOTAS:\s*(.+)$/)))     { if (curKpi) curKpi.notes  = m[1].trim(); }
+  });
+  flushTask(); flushKpi();
   return result;
 }
 
