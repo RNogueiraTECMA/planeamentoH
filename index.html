@@ -895,7 +895,9 @@ function render() {
     else if (state.tab === 'stats')    renderStats();
   } catch(e) {
     console.error('Tab render error [' + state.tab + ']:', e);
-    showToast('Erro ao carregar aba: ' + e.message, 'error');
+    var errMsg = '[' + state.tab + '] ' + e.message + ' @ ' + (e.stack||'').split('\n')[1];
+    var c = document.getElementById('toast-container');
+    if (c) { var t = document.createElement('div'); t.className='toast error'; t.style.cssText='opacity:1;transform:none;padding:14px;font-size:12px;max-width:400px'; t.textContent=errMsg; c.appendChild(t); setTimeout(function(){t.remove();},15000); }
   }
 }
 
