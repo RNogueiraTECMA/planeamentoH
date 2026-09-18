@@ -472,7 +472,7 @@ textarea{resize:vertical;min-height:70px}
         </div>
       </div>
       <div class="field" style="background:var(--surface2);border-radius:var(--r);padding:12px;text-align:center">
-        <div style="font-size:11px;color:var(--tx2);margin-bottom:4px">Horas de trabalho calculadas</div>
+        <div style="font-size:11px;color:var(--tx2);margin-bottom:4px">Tempo no escritório</div>
         <div style="font-size:22px;font-weight:700;color:var(--accent)" id="complete-hours-preview">—</div>
         <div style="font-size:11px;color:var(--tx3)" id="complete-variance-preview"></div>
       </div>
@@ -1164,13 +1164,8 @@ function updateCompletePreview(task) {
   if (!task) task = findTask(document.getElementById('complete-id').value, p);
   if (!task || !task.start) return;
   var spent = estimateWorkHours(task.id, p, task.start||todayISO(), dateVal);
-  var total  = (task.hours||0) + (task.hoursExtra||0);
-  var diff   = Math.round((spent - total) * 10) / 10;
-  document.getElementById('complete-hours-preview').textContent = spent + 'h';
-  var vEl = document.getElementById('complete-variance-preview');
-  if (diff > 0) { vEl.textContent = '+' + diff + 'h acima do previsto'; vEl.style.color = 'var(--orange)'; }
-  else if (diff < 0) { vEl.textContent = diff + 'h abaixo do previsto'; vEl.style.color = 'var(--green)'; }
-  else { vEl.textContent = 'Dentro do previsto ✓'; vEl.style.color = 'var(--green)'; }
+  document.getElementById('complete-hours-preview').textContent = spent + 'h no escritório';
+  document.getElementById('complete-variance-preview').textContent = '';
 }
 
 function estimateWorkHours(taskId, p, taskStartISO, completedDateISO) {
@@ -2056,168 +2051,68 @@ function doDeleteEvent(id, p) {
 //  STATS TAB
 // ═══════════════════════════════════════════════════════════
 function renderStats() {
-  var html = '<div class="section-title" style="margin-bottom:20px">Estatísticas Globais</div>';
+  var p      = state.person;
+  var tasks  = state.data.tasks[p]  || [];
+  var events = state.data.events[p] || [];
+  var today  = todayISO();
+  var active = tasks.filter(function(t){ return t.status !== 'Concluída' && t.status !== 'Concluida'; });
+  var done   = tasks.filter(function(t){ return t.status === 'Concluída' || t.status === 'Concluida'; });
+  var overdue = active.filter(function(t){ return t.end && t.end < today; });
+  var evNext  = events.filter(function(e){ return e.date >= today; });
 
-  ['rn','cg','pf','ir'].forEach(function(p) {
-    var tasks  = state.data.tasks[p]  || [];
-    var events = state.data.events[p] || [];
-    var active = tasks.filter(function(t){ return t.status === 'Em curso'; });
-    var done   = tasks.filter(function(t){ return t.status === 'Concluída'; });
-    var totalH = active.reduce(function(s,t){ return s + (t.hours||0) + (t.hoursExtra||0); }, 0);
+  var html = '';
 
-    html += '<div class="card" style="margin-bottom:16px">';
-    html += '<div class="card-header"><div class="card-title">👤 ' + PERSON_LABELS[p] + '</div>';
-    html += '<span class="pill gray">' + getScheduleForDay(p, todayISO()).label + '</span></div>';
-    html += '<div class="stats-grid">';
-    html += '<div class="stat-card"><div class="stat-num">' + active.length + '</div><div class="stat-label">Em curso</div></div>';
-    html += '<div class="stat-card"><div class="stat-num">' + done.length + '</div><div class="stat-label">Concluídas</div></div>';
-    html += '<div class="stat-card"><div class="stat-num">' + totalH.toFixed(1) + 'h</div><div class="stat-label">Horas alocadas</div></div>';
-    html += '<div class="stat-card"><div class="stat-num">' + events.filter(function(e){ return e.status !== 'Eliminado'; }).length + '</div><div class="stat-label">Eventos</div></div>';
+  // ── Tarefas ─────────────────────────────────────────────────────────────
+  html += '<div class="section-header"><div class="section-title">📋 Tarefas</div></div>';
+  html += '<div class="stats-grid" style="margin-bottom:16px">';
+  html += '<div class="stat-card"><div class="stat-num">' + active.length + '</div><div class="stat-label">Em curso</div></div>';
+  html += '<div class="stat-card"><div class="stat-num">' + done.length   + '</div><div class="stat-label">Concluídas</div></div>';
+  html += '<div class="stat-card"><div class="stat-num">' + tasks.length  + '</div><div class="stat-label">Total</div></div>';
+  html += '<div class="stat-card"><div class="stat-num">' + evNext.length + '</div><div class="stat-label">Eventos futuros</div></div>';
+  html += '</div>';
+
+  // Overdue warning
+  if (overdue.length) {
+    html += '<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:12px;margin-bottom:20px">';
+    html += '<div style="font-size:12px;font-weight:600;color:var(--red);margin-bottom:6px">⚠️ ' + overdue.length + ' tarefa(s) em atraso</div>';
+    overdue.forEach(function(t) {
+      html += '<div style="font-size:12px;color:var(--tx2);margin-top:2px">• ' + esc(t.desc) + ' — ' + formatDate(t.end) + '</div>';
+    });
     html += '</div>';
+  }
 
-    // Overdue tasks
-    var today = new Date(); today.setHours(0,0,0,0);
-    var overdue = active.filter(function(t){ return t.end && new Date(t.end) < today; });
-    if (overdue.length > 0) {
-      html += '<div style="margin-top:8px"><span class="pill red">⚠️ ' + overdue.length + ' tarefa(s) em atraso</span></div>';
-    }
+  // ── KPIs ─────────────────────────────────────────────────────────────────
+  var kpis = (state.data.kpis||[]).filter(function(k){ return k.person === p; });
+  if (kpis.length) {
+    var statsMonth = state.statsMonth || today.substring(0,7);
+    html += '<div class="section-header" style="margin-top:8px">';
+    html += '<div class="section-title">🎯 KPIs</div>';
+    html += '<input type="month" value="' + statsMonth + '" style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--tx1);font-size:13px" onchange="state.statsMonth=this.value;renderStats()">';
     html += '</div>';
-  });
+    kpis.forEach(function(k) {
+      var val   = getKpiValor(k, p, statsMonth);
+      var tgt   = parseFloat(k.target) || 0;
+      var pct   = (tgt > 0 && val !== null) ? Math.min(100, Math.round(val/tgt*100)) : null;
+      var col   = pct === null ? 'var(--border)' : pct >= 100 ? 'var(--green)' : pct >= 70 ? 'var(--orange)' : 'var(--red)';
+      html += '<div class="card" style="margin-bottom:10px;padding:12px 14px">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+      html += '<span style="font-size:13px;font-weight:500">' + esc(k.name) + (isAutoKpi(k) ? ' <span style="font-size:10px;opacity:.4">⚡</span>' : '') + '</span>';
+      html += '<span style="font-size:15px;font-weight:700;color:' + col + '">';
+      if (val !== null) html += val + (k.unit?' '+esc(k.unit):'') + ' <span style="font-weight:400;color:var(--tx3);font-size:11px">/ ' + k.target + (k.unit?' '+esc(k.unit):'') + '</span>';
+      else html += '<span style="font-size:12px;color:var(--tx3)">— sem dados</span>';
+      html += '</span></div>';
+      html += '<div style="background:var(--border);border-radius:4px;height:7px">';
+      html += '<div style="background:' + col + ';width:' + (pct||0) + '%;height:100%;border-radius:4px;transition:width .4s"></div></div>';
+      if (!isAutoKpi(k)) {
+        html += '<div style="text-align:right;margin-top:6px"><button class="btn btn-outline btn-sm" style="font-size:11px" onclick="openUpdateKpiValor(\'' + k.id + '\',\'' + p + '\')">Atualizar valor</button></div>';
+      }
+      html += '</div>';
+    });
+  }
 
   document.getElementById('tab-stats').innerHTML = html;
 }
 
-// ═══════════════════════════════════════════════════════════
-//  MODAL HELPERS
-// ═══════════════════════════════════════════════════════════
-function openModal(id) {
-  document.getElementById(id).classList.remove('hidden');
-}
-function closeModal(id) {
-  document.getElementById(id).classList.add('hidden');
-}
-// Close on overlay click
-document.querySelectorAll('.overlay').forEach(function(overlay) {
-  overlay.addEventListener('click', function(e) {
-    if (e.target === overlay) closeModal(overlay.id);
-  });
-});
-
-// ═══════════════════════════════════════════════════════════
-//  TOAST
-// ═══════════════════════════════════════════════════════════
-function showToast(msg, type) {
-  var c = document.getElementById('toast-container');
-  var t = document.createElement('div');
-  t.className = 'toast ' + (type || 'info');
-  t.textContent = msg;
-  c.appendChild(t);
-  setTimeout(function(){ t.remove(); }, 3500);
-}
-
-// ═══════════════════════════════════════════════════════════
-//  UTILS
-// ═══════════════════════════════════════════════════════════
-function esc(s) {
-  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-function q(obj) {
-  return "JSON.parse('" + JSON.stringify(obj).replace(/\\/g,'\\\\').replace(/'/g,"\\'") + "')";
-}
-function todayISO() {
-  var dt = new Date();
-  var y  = dt.getFullYear();
-  var m  = ('0'+(dt.getMonth()+1)).slice(-2);
-  var dd = ('0'+dt.getDate()).slice(-2);
-  return y+'-'+m+'-'+dd;
-}
-function formatDate(s) {
-  if (!s) return '—';
-  try {
-    var d = new Date(s + 'T12:00:00');
-    return d.toLocaleDateString('pt-PT', { day:'2-digit', month:'2-digit', year:'numeric' });
-  } catch(e) { return s; }
-}
-function formatTime(v) {
-  if (!v) return '';
-  var s = String(v).trim();
-  // Already a plain HH:MM or HH:MM:SS string
-  if (/^\d{1,2}:\d{2}/.test(s)) return s.substring(0, 5);
-  // Google Sheets epoch-1899 date string e.g. "Sat Dec 30 1899 12:36:00 GMT-0036..."
-  // Use LOCAL hours/minutes (not UTC) to avoid the historical LMT offset (+36min for Lisbon)
-  try {
-    var d = new Date(s);
-    if (!isNaN(d.getTime())) {
-      var h = ('0' + d.getHours()).slice(-2);
-      var m = ('0' + d.getMinutes()).slice(-2);
-      return h + ':' + m;
-    }
-  } catch(e) {}
-  return s.substring(0, 5);
-}
-function getMonday(d) {
-  var dt = new Date(d);
-  var day = dt.getDay();
-  var diff = dt.getDate() - day + (day === 0 ? -6 : 1);
-  dt.setDate(diff);
-  dt.setHours(0,0,0,0);
-  return dt;
-}
-
-// ═══════════════════════════════════════════════════════════
-//  AUSÊNCIAS
-// ═══════════════════════════════════════════════════════════
-function openNewAbsence() {
-  var p = state.person;
-  document.getElementById('absence-id').value = '';
-  document.getElementById('absence-person-key').value = p;
-  document.getElementById('absence-type').value = 'Falta';
-  document.getElementById('absence-start').value = todayISO();
-  document.getElementById('absence-end').value = todayISO();
-  document.getElementById('absence-notes').value = '';
-  document.getElementById('modal-absence-title').textContent = 'Nova Ausência — ' + PERSON_LABELS[p];
-  openModal('modal-absence');
-}
-
-function openEditAbsence(absence, personKey) {
-  document.getElementById('absence-id').value = absence.id;
-  document.getElementById('absence-person-key').value = personKey;
-  document.getElementById('absence-type').value = absence.type_ || 'Falta';
-  document.getElementById('absence-start').value = absence.start || '';
-  document.getElementById('absence-end').value = absence.end || absence.start || '';
-  document.getElementById('absence-notes').value = absence.notes || '';
-  document.getElementById('modal-absence-title').textContent = 'Editar Ausência';
-  openModal('modal-absence');
-}
-
-function saveAbsence() {
-  var id    = document.getElementById('absence-id').value;
-  var p     = document.getElementById('absence-person-key').value;
-  var type_ = document.getElementById('absence-type').value;
-  var start = document.getElementById('absence-start').value;
-  var end   = document.getElementById('absence-end').value;
-  var notes = document.getElementById('absence-notes').value;
-  if (!start) { showToast('Selecciona uma data de início', 'error'); return; }
-  if (!end || end < start) end = start;
-  var action = id ? 'editAbsence' : 'addAbsence';
-  var payload = { person:p, type_:type_, start:start, end:end, notes:notes };
-  if (id) payload.id = id;
-  closeModal('modal-absence');
-  callServer(action, payload, function(err, res) {
-    if (err || (res && res.error)) { showToast('Erro ao guardar ausência', 'error'); return; }
-    showToast((id ? 'Ausência actualizada' : 'Ausência registada') + ' ✓', 'success');
-    loadData();
-  });
-}
-
-function deleteAbsenceById(id, p) {
-  if (!confirm('Eliminar esta ausência?')) return;
-  callServer('deleteAbsence', { id:id, person:p }, function(err, res) {
-    if (err || (res && res.error)) { showToast('Erro ao eliminar', 'error'); return; }
-    showToast('Ausência eliminada', 'success');
-    loadData();
-  });
-}
 
 function renderAbsenceList(p) {
   var abs = ((state.data.absences && state.data.absences[p]) || []).slice().sort(function(a,b){
@@ -2606,15 +2501,25 @@ function renderKpis() {
     html += '<div style="color:var(--tx3);text-align:center;padding:32px 0;font-size:13px">Sem KPIs definidos para ' + PERSON_INFO[p].firstName + '</div>';
   } else {
     kpis.forEach(function(k) {
+      var isAuto = isAutoKpi(k);
+      var curMonth = todayISO().substring(0,7);
+      var kpiVal = getKpiValor(k, p, curMonth);
+      var target = parseFloat(k.target) || 0;
+      var pct = (target > 0 && kpiVal !== null) ? Math.min(100, Math.round(kpiVal/target*100)) : null;
+      var pctColor = pct === null ? 'gray' : pct >= 100 ? 'green' : pct >= 70 ? 'orange' : 'red';
       html += '<div class="task-item" style="margin-bottom:10px">';
-      html += '<div class="task-top"><div class="task-desc">' + esc(k.name) + '</div>';
+      html += '<div class="task-top"><div class="task-desc">' + esc(k.name) + (isAuto ? ' <span style="font-size:10px;opacity:.5">⚡</span>' : '') + '</div>';
       html += '<div style="display:flex;gap:6px">';
+      if (!isAuto) html += '<button class="icon-btn" title="Atualizar valor" onclick="openUpdateKpiValor(\'' + k.id + '\',\'' + p + '\')">📊</button>';
       html += '<button class="icon-btn" data-act="editKpi" data-id="' + k.id + '" data-p="' + p + '">✏️</button>';
       html += '<button class="icon-btn" data-act="deleteKpi" data-id="' + k.id + '" data-p="' + p + '">🗑️</button>';
       html += '</div></div><div class="task-meta">';
       if (k.target) html += '<span class="pill blue">Objetivo: ' + esc(k.target) + (k.unit?' '+esc(k.unit):'') + '</span>';
-      if (k.notes)  html += '<span class="pill gray">' + esc(k.notes) + '</span>';
-      html += '</div></div>';
+      if (kpiVal !== null) html += '<span class="pill ' + pctColor + '">Atual: ' + kpiVal + (k.unit?' '+esc(k.unit):'') + (pct!==null?' ('+pct+'%)':'') + '</span>';
+      else html += '<span class="pill gray">' + (isAuto ? 'Sem dados este mês' : 'Valor não inserido') + '</span>';
+      html += '</div>';
+      if (pct !== null) html += '<div style="margin:6px 12px 10px;background:var(--border);border-radius:4px;height:5px"><div style="background:var(--' + pctColor + ');width:' + pct + '%;height:100%;border-radius:4px"></div></div>';
+      html += '</div>';
     });
   }
   document.getElementById('tab-kpis').innerHTML = html;
@@ -2623,6 +2528,7 @@ function openNewKpi() {
   var p=state.person;
   ['kpi-id','kpi-name','kpi-unit','kpi-target','kpi-notes'].forEach(function(id){document.getElementById(id).value='';});
   document.getElementById('kpi-person').value=p;
+  document.getElementById('kpi-tipo').value='manual';
   document.getElementById('modal-kpi-title').textContent='Novo KPI — '+PERSON_LABELS[p];
   openModal('modal-kpi');
 }
@@ -2633,6 +2539,7 @@ function openEditKpi(kpi,p) {
   document.getElementById('kpi-unit').value=kpi.unit||'';
   document.getElementById('kpi-target').value=kpi.target||'';
   document.getElementById('kpi-notes').value=kpi.notes||'';
+  document.getElementById('kpi-tipo').value=kpi.tipo||'manual';
   document.getElementById('modal-kpi-title').textContent='Editar KPI';
   openModal('modal-kpi');
 }
@@ -2641,7 +2548,7 @@ function saveKpi() {
   var p=document.getElementById('kpi-person').value;
   var name=document.getElementById('kpi-name').value.trim();
   if (!name){showToast('Preenche o nome do KPI','error');return;}
-  var payload={person:p,name:name,unit:document.getElementById('kpi-unit').value.trim(),target:document.getElementById('kpi-target').value.trim(),notes:document.getElementById('kpi-notes').value.trim()};
+  var payload={person:p,name:name,tipo:document.getElementById('kpi-tipo').value,unit:document.getElementById('kpi-unit').value.trim(),target:document.getElementById('kpi-target').value.trim(),notes:document.getElementById('kpi-notes').value.trim()};
   if (id) payload.id=id;
   closeModal('modal-kpi');
   callServer(id?'editKpi':'addKpi', payload, function(err,res){
@@ -2891,6 +2798,74 @@ function confirmImport() {
   processNext();
 }
 
+// ═══ KPI AUTO-CALCULATION & VALOR ═══════════════════════════════════════
+
+function isAutoKpi(kpi) {
+  if (!kpi) return false;
+  var tipo = typeof kpi === 'object' ? (kpi.tipo||'') : '';
+  return tipo === 'auto-conclusao' || tipo === 'auto-deadline';
+}
+
+function calcAutoKpi(kpi, person, month) {
+  var tipo  = kpi.tipo || '';
+  var tasks = state.data.tasks[person] || [];
+
+  if (tipo === 'auto-conclusao') {
+    // Tasks whose deadline falls in this month
+    var monthTasks = tasks.filter(function(t){ return t.end && t.end.substring(0,7) === month; });
+    if (!monthTasks.length) return null; // no data
+    var done = monthTasks.filter(function(t){ return t.status==='Concluída'||t.status==='Concluida'; });
+    return Math.round(done.length / monthTasks.length * 100);
+  }
+  if (tipo === 'auto-deadline') {
+    // Completed tasks in this month: how many were done on time
+    var completed = tasks.filter(function(t){
+      return (t.status==='Concluída'||t.status==='Concluida') && t.end && t.end.substring(0,7) === month;
+    });
+    if (!completed.length) return null;
+    // completedAt vs end — use completedAt if available
+    var onTime = completed.filter(function(t){
+      if (t.completedAt) return t.completedAt <= t.end;
+      return true; // assume on time if no completedAt
+    });
+    return Math.round(onTime.length / completed.length * 100);
+  }
+  return null; // not auto-calculable
+}
+
+function getKpiValor(kpi, person, month) {
+  if (isAutoKpi(kpi.name)) return calcAutoKpi(kpi, person, month);
+  return kpi.valor !== '' && kpi.valor !== undefined ? parseFloat(kpi.valor) : null;
+}
+
+function openUpdateKpiValor(kpiId, p) {
+  var kpi = findKpi(kpiId);
+  if (!kpi) return;
+  document.getElementById('kpiv-id').value = kpiId;
+  document.getElementById('kpiv-person').value = p;
+  document.getElementById('kpiv-name').textContent = kpi.name;
+  document.getElementById('kpiv-unit').textContent = kpi.unit || '';
+  document.getElementById('kpiv-target').textContent = kpi.target || '';
+  document.getElementById('kpiv-valor').value = kpi.valor || '';
+  openModal('modal-kpi-valor');
+}
+
+function saveKpiValor() {
+  var id    = document.getElementById('kpiv-id').value;
+  var p     = document.getElementById('kpiv-person').value;
+  var valor = document.getElementById('kpiv-valor').value.trim();
+  closeModal('modal-kpi-valor');
+  callServer('editKpi', { id:id, person:p, valor:valor }, function(err, res) {
+    if (err||(res&&res.error)) { showToast('Erro ao guardar', 'error'); return; }
+    // Update local state
+    var kpis = state.data.kpis || [];
+    for (var i=0; i<kpis.length; i++) { if (kpis[i].id===id) { kpis[i].valor=valor; break; } }
+    showToast('Valor atualizado \u2713', 'success');
+    if (state.tab === 'kpis')  renderKpis();
+    if (state.tab === 'stats') renderStats();
+  });
+}
+
 </script>
 <!-- MODAL KPI -->
 <div class="overlay hidden" id="modal-kpi">
@@ -2902,6 +2877,13 @@ function confirmImport() {
     <div class="modal-body">
       <input type="hidden" id="kpi-id"><input type="hidden" id="kpi-person">
       <div class="field"><label class="label">Nome do KPI</label><input type="text" id="kpi-name" placeholder="Ex: Taxa de conclusão de tarefas"></div>
+      <div class="field"><label class="label">Tipo de cálculo</label>
+        <select id="kpi-tipo">
+          <option value="manual">📝 Manual — o valor é inserido manualmente</option>
+          <option value="auto-conclusao">⚡ Auto: Taxa de conclusão de tarefas</option>
+          <option value="auto-deadline">⚡ Auto: Cumprimento de deadlines</option>
+        </select>
+      </div>
       <div class="row2">
         <div class="field"><label class="label">Objetivo</label><input type="text" id="kpi-target" placeholder="Ex: 90"></div>
         <div class="field"><label class="label">Unidade</label><input type="text" id="kpi-unit" placeholder="Ex: %"></div>
@@ -2930,6 +2912,28 @@ function confirmImport() {
   </div>
 </div>
 <input type="file" id="import-pdf-input" accept=".pdf" style="display:none" onchange="handleImportPDF(this)">
+
+<!-- MODAL KPI VALOR -->
+<div class="overlay hidden" id="modal-kpi-valor">
+  <div class="modal" style="max-width:360px">
+    <div class="modal-header">
+      <div class="modal-title">Atualizar Valor</div>
+      <button class="icon-btn" onclick="closeModal('modal-kpi-valor')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="kpiv-id"><input type="hidden" id="kpiv-person">
+      <div style="font-size:13px;font-weight:500;margin-bottom:12px" id="kpiv-name"></div>
+      <div style="font-size:12px;color:var(--tx2);margin-bottom:12px">Objetivo: <strong id="kpiv-target"></strong> <span id="kpiv-unit"></span></div>
+      <div class="field"><label class="label">Valor real atual</label>
+        <input type="number" id="kpiv-valor" placeholder="Ex: 75" step="0.1">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-kpi-valor')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveKpiValor()">Guardar</button>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>
