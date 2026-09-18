@@ -2862,23 +2862,29 @@ function confirmImport() {
       items.push({ action:'addKpi', payload:{ person:p, name:k.name,
         target:k.target||'', unit:k.unit||'', notes:k.notes||'' }});
   });
-  if (!items.length) { closeModal('modal-import'); return; }
+  if (!items.length) { closeModal('modal-import'); showToast('Sem itens novos para importar', 'info'); return; }
 
   var btn = document.getElementById('import-confirm-btn');
-  btn.disabled = true; btn.textContent = 'A guardar...';
-  var done = 0, total = items.length, errors = 0;
+  btn.disabled = true;
+  var idx = 0, errors = 0, total = items.length;
 
-  items.forEach(function(item) {
+  // Process sequentially — one at a time — to avoid Apps Script concurrent execution limits
+  function processNext() {
+    if (idx >= total) {
+      closeModal('modal-import');
+      showToast('Importado: ' + (total-errors) + '/' + total + ' itens ✓', errors ? 'error' : 'success');
+      btn.disabled = false; btn.textContent = '✓ Confirmar Importação';
+      loadData();
+      return;
+    }
+    var item = items[idx++];
+    btn.textContent = 'A guardar ' + idx + '/' + total + '…';
     callServer(item.action, item.payload, function(err) {
       if (err) errors++;
-      if (++done === total) {
-        closeModal('modal-import');
-        showToast('Importado: ' + (total-errors) + '/' + total + ' itens ✓', errors ? 'error' : 'success');
-        btn.disabled = false; btn.textContent = '✓ Confirmar Importação';
-        loadData();
-      }
+      processNext();
     });
-  });
+  }
+  processNext();
 }
 
 </script>
