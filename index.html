@@ -281,15 +281,9 @@ textarea{resize:vertical;min-height:70px}
         <label class="label">Descrição</label>
         <textarea id="task-desc" placeholder="Descreve a tarefa..."></textarea>
       </div>
-      <div class="row2">
-        <div class="field">
-          <label class="label">Horas Alocadas</label>
-          <input type="number" id="task-hours" placeholder="Ex: 4" min="0.5" step="0.5">
-        </div>
-        <div class="field">
-          <label class="label">Data Início</label>
-          <input type="date" id="task-start">
-        </div>
+      <div class="field">
+        <label class="label">Data Início</label>
+        <input type="date" id="task-start">
       </div>
       <div class="field">
         <label class="label">Deadline</label>
@@ -317,16 +311,9 @@ textarea{resize:vertical;min-height:70px}
     <div class="modal-body">
       <input type="hidden" id="extend-id">
       <input type="hidden" id="extend-person">
-      <p style="font-size:13px;color:var(--tx2);margin-bottom:16px">Adicionar horas extra e/ou nova deadline.</p>
-      <div class="row2">
-        <div class="field">
-          <label class="label">Horas Extra</label>
-          <input type="number" id="extend-hours" placeholder="Ex: 2" min="0.5" step="0.5">
-        </div>
-        <div class="field">
-          <label class="label">Nova Deadline</label>
-          <input type="date" id="extend-end">
-        </div>
+      <div class="field">
+        <label class="label">Nova Deadline</label>
+        <input type="date" id="extend-end">
       </div>
     </div>
     <div class="modal-footer">
@@ -1050,7 +1037,6 @@ function renderTaskItem(t, p) {
   html += '</div></div>';
 
   html += '<div class="task-meta">';
-  html += '<span class="pill blue">⏱ ' + totalH + 'h</span>';
   if (t.start) html += '<span class="pill gray">Início: ' + formatDate(t.start) + '</span>';
   html += '<span class="pill ' + (overdue ? 'red' : 'orange') + '">📅 ' + deadline + '</span>';
   if (isDone && t.hoursSpent) {
@@ -1076,7 +1062,6 @@ function openNewTask() {
   document.getElementById('task-id').value = '';
   document.getElementById('task-person-key').value = state.person;
   document.getElementById('task-desc').value = '';
-  document.getElementById('task-hours').value = '';
   document.getElementById('task-start').value = todayISO();
   document.getElementById('task-end').value = '';
   document.getElementById('task-notes').value = '';
@@ -1088,7 +1073,6 @@ function openEditTask(task, personKey) {
   document.getElementById('task-id').value = task.id;
   document.getElementById('task-person-key').value = personKey;
   document.getElementById('task-desc').value = task.desc || '';
-  document.getElementById('task-hours').value = task.hours || '';
   document.getElementById('task-start').value = task.start || '';
   document.getElementById('task-end').value = task.end || '';
   document.getElementById('task-notes').value = task.notes || '';
@@ -1100,16 +1084,14 @@ function saveTask() {
   var id   = document.getElementById('task-id').value;
   var p    = document.getElementById('task-person-key').value;
   var desc = document.getElementById('task-desc').value.trim();
-  var hrs  = document.getElementById('task-hours').value;
   var s    = document.getElementById('task-start').value;
   var e    = document.getElementById('task-end').value;
   var n    = document.getElementById('task-notes').value.trim();
 
   if (!desc) { showToast('Preenche a descrição.', 'error'); return; }
-  if (!hrs)  { showToast('Preenche as horas.', 'error'); return; }
 
   var action = id ? 'editTask' : 'addTask';
-  var payload = { person: p, desc: desc, hours: parseFloat(hrs), start: s, end: e, notes: n };
+  var payload = { person: p, desc: desc, hours: 0, start: s, end: e, notes: n };
   if (id) payload.id = id;
 
   closeModal('modal-task');
@@ -1117,13 +1099,13 @@ function saveTask() {
     if (err || (res && res.error)) { showToast('Erro: ' + (res && res.error || ''), 'error'); return; }
     showToast(id ? 'Tarefa atualizada!' : 'Tarefa criada!', 'success');
     if (!id && res && res.id) {
-      var t = { id: res.id, person: PERSON_LABELS[p], desc: desc, hours: parseFloat(hrs),
+      var t = { id: res.id, person: PERSON_LABELS[p], desc: desc, hours: 0,
                 hoursExtra: 0, start: s, end: e, status: 'Em curso', notes: n, type: 'task' };
       state.data.tasks[p].push(t);
     } else {
       var arr = state.data.tasks[p];
       for (var i = 0; i < arr.length; i++) {
-        if (arr[i].id === id) { arr[i].desc = desc; arr[i].hours = parseFloat(hrs); arr[i].start = s; arr[i].end = e; arr[i].notes = n; break; }
+        if (arr[i].id === id) { arr[i].desc = desc; arr[i].hours = 0; arr[i].start = s; arr[i].end = e; arr[i].notes = n; break; }
       }
     }
     render();
@@ -1133,7 +1115,6 @@ function saveTask() {
 function openExtend(id, personKey) {
   document.getElementById('extend-id').value = id;
   document.getElementById('extend-person').value = personKey;
-  document.getElementById('extend-hours').value = '';
   document.getElementById('extend-end').value = '';
   openModal('modal-extend');
 }
@@ -1141,16 +1122,15 @@ function openExtend(id, personKey) {
 function saveExtend() {
   var id    = document.getElementById('extend-id').value;
   var p     = document.getElementById('extend-person').value;
-  var extra = parseFloat(document.getElementById('extend-hours').value) || 0;
   var end   = document.getElementById('extend-end').value;
-  if (!extra && !end) { showToast('Preenche horas extra ou nova deadline.', 'error'); return; }
+  if (!end) { showToast('Preenche a nova deadline.', 'error'); return; }
   closeModal('modal-extend');
-  callServer('extendTask', { id: id, person: p, extraHours: extra, end: end }, function(err, res) {
+  callServer('extendTask', { id: id, person: p, extraHours: 0, end: end }, function(err, res) {
     if (err || (res && res.error)) { showToast('Erro ao extender.', 'error'); return; }
-    showToast('Tarefa extendida!', 'success');
+    showToast('Deadline atualizada!', 'success');
     var arr = state.data.tasks[p];
     for (var i = 0; i < arr.length; i++) {
-      if (arr[i].id === id) { arr[i].hoursExtra = (arr[i].hoursExtra||0) + extra; if (end) arr[i].end = end; break; }
+      if (arr[i].id === id) { if (end) arr[i].end = end; break; }
     }
     render();
   });
@@ -1438,7 +1418,7 @@ function renderPlanning() {
         var tot = (t.hours||0)+(t.hoursExtra||0);
         html += '<div class="ds-row"><div class="ds-dot" style="background:var(--accent)"></div>';
         html += '<div style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(t.desc) + '</div>';
-        html += '<span class="pill blue" style="font-size:10px">' + tot + 'h</span></div>';
+        html += '</div>';
       });
       dayEvs.forEach(function(ev) {
         html += '<div class="ds-row"><div class="ds-dot" style="background:var(--orange)"></div>';
@@ -2749,52 +2729,88 @@ function parsePlanningPDF(text) {
 
   // Detect person
   var PMAP = {
-    'Ricardo Nogueira':'rn',
-    'Cristiana Gonçalves':'cg', 'Cristiana Goncalves':'cg',
-    'Pedro Fernandes':'pf',
-    'Inês Reis':'ir', 'Ines Reis':'ir'
+    'Ricardo Nogueira':'rn', 'Cristiana Gonçalves':'cg', 'Cristiana Goncalves':'cg',
+    'Pedro Fernandes':'pf', 'Inês Reis':'ir', 'Ines Reis':'ir'
   };
   Object.keys(PMAP).forEach(function(n){ if (text.indexOf(n) >= 0) result.person_key = PMAP[n]; });
 
-  // Extract tasks: "Tarefa N - Name" then "Início: DD/MM/YYYY Deadline: DD/MM/YYYY"
-  var tRe = /Tarefa\s+\d+\s*[-–—]\s*([^\n\r]+)[\s\S]{0,600}?Início:\s*(\d{2}\/\d{2}\/\d{4})\s+Deadline:\s*(\d{2}\/\d{2}\/\d{4})/g;
-  var m, seen = {};
-  while ((m = tRe.exec(text)) !== null) {
-    var desc = m[1].trim();
-    if (!seen[desc]) {
-      seen[desc] = 1;
-      result.tasks.push({ desc: desc, start: ptDate(m[2]), end: ptDate(m[3]), hours: 8 });
+  // Split into clean lines, filter page headers
+  var lines = text.split('\n').map(function(l){ return l.trim(); }).filter(function(l){
+    return l && !/^TecmaFoods\s*\|/.test(l);
+  });
+
+  // ── Parse tasks line-by-line ─────────────────────────────────────────
+  var seen = {};
+  var i = 0;
+  while (i < lines.length) {
+    var line = lines[i];
+    var taskMatch = line.match(/^Tarefa\s+\d+\s*[-–—‐]\s*(.+)$/);
+    if (taskMatch) {
+      var taskTitle = taskMatch[1].trim();
+      // Join next 6 lines to find date info regardless of item splitting
+      var searchWindow = lines.slice(i + 1, Math.min(i + 7, lines.length)).join(' ');
+      var dateMatch = searchWindow.match(/Início:\s*(\d{2}\/\d{2}\/\d{4}).*?Deadline:\s*(\d{2}\/\d{2}\/\d{4})/);
+      if (dateMatch) {
+        var startDate = ptDate(dateMatch[1]);
+        var endDate   = ptDate(dateMatch[2]);
+        // Advance i past the date line
+        var j = i + 1;
+        while (j < lines.length && j < i + 7) {
+          if (/Início:.*\d{2}\/\d{2}\/\d{4}/.test(lines[j]) || /Deadline:.*\d{2}\/\d{2}\/\d{4}/.test(lines[j])) {
+            j++; break;
+          }
+          j++;
+        }
+        // Collect description lines until next task/section
+        var descLines = [];
+        while (j < lines.length) {
+          var dl = lines[j];
+          if (/^Tarefa\s+\d+\s*[-–—‐]/.test(dl) ||
+              /^MÊS\s+\d+/.test(dl) ||
+              /^KPIs? mensais/.test(dl) ||
+              /^Objetivo mensal:/.test(dl) ||
+              /^\d{2}\/\d{2}\/\d{4}\s+[Aa]\s+\d{2}\/\d{2}\/\d{4}$/.test(dl)) { break; }
+          descLines.push(dl);
+          j++;
+        }
+        if (!seen[taskTitle]) {
+          seen[taskTitle] = 1;
+          result.tasks.push({
+            desc: taskTitle, start: startDate, end: endDate,
+            hours: 0, notes: descLines.join('\n').trim()
+          });
+        }
+        i = j;
+        continue;
+      }
     }
+    i++;
   }
 
-  // Extract KPIs section
-  var ks = text.indexOf('KPIs mensais');
-  var ke = text.indexOf('MÊS 1');
+  // ── Parse KPIs ───────────────────────────────────────────────────────
+  var ks = text.indexOf('KPIs mensais'), ke = text.indexOf('MÊS 1');
   if (ks >= 0) {
     var kSec = '\n' + text.substring(ks, ke > ks ? ke : text.length);
-    // Pattern A: each field on its own line (\n1\nName\n85\n%\nNotes)
     var kReA = /\n(\d)\n([\s\S]+?)\n(\d+)\n(%|\w+)\n([\s\S]+?)(?=\n\d\n|$)/g;
     var km;
     while ((km = kReA.exec(kSec)) !== null) {
       var name = km[2].replace(/\n/g,' ').trim();
       var notes = km[5].replace(/\n/g,' ').trim();
-      if (name.length > 5 && !/^(#|KPI|Notas|Objetivo|Unidade)/.test(name)) {
+      if (name.length > 5 && !/^(#|KPI|Notas|Objetivo|Unidade)/.test(name))
         result.kpis.push({ name: name, target: km[3], unit: km[4], notes: notes });
-      }
     }
-    // Pattern B fallback: all inline "1 Name 85 % Notes"
     if (!result.kpis.length) {
       var kReB = /\b(\d)\s+([\wÀ-úçãõêé\s\/\(\)\-]+?)\s+(\d+)\s+(%|\w+)/g;
       while ((km = kReB.exec(kSec)) !== null) {
         var name2 = km[2].trim();
-        if (name2.length > 8 && !/^(KPI|Notas|Objetivo|Unidade)/.test(name2)) {
+        if (name2.length > 8 && !/^(KPI|Notas|Objetivo|Unidade)/.test(name2))
           result.kpis.push({ name: name2, target: km[3], unit: km[4], notes: '' });
-        }
       }
     }
   }
   return result;
 }
+
 
 window._importData = null;
 
@@ -2819,7 +2835,7 @@ function renderImportPreview(data) {
             + '<div style="font-size:13px;font-weight:500">' + esc(t.desc) + '</div>'
             + (dup ? '<span class="pill gray" style="font-size:10px;flex-shrink:0">já existe</span>' : '')
             + '</div>'
-            + '<div style="font-size:11px;color:var(--tx2);margin-top:3px">' + formatDate(t.start) + ' → ' + formatDate(t.end) + ' · ' + t.hours + 'h</div>'
+            + '<div style="font-size:11px;color:var(--tx2);margin-top:3px">' + formatDate(t.start) + ' → ' + formatDate(t.end) + '</div>'
             + '</div>';
     });
   } else {
@@ -2862,8 +2878,8 @@ function confirmImport() {
   var items = [];
   (data.tasks || []).forEach(function(t) {
     if (existD.indexOf(t.desc.trim().toLowerCase()) === -1)
-      items.push({ action:'addTask', payload:{ person:p, desc:t.desc, hours:t.hours||8,
-        start:t.start, end:t.end, status:'Em curso', notes:'' }});
+      items.push({ action:'addTask', payload:{ person:p, desc:t.desc, hours:0,
+        start:t.start, end:t.end, status:'Em curso', notes:t.notes||'' }});
   });
   (data.kpis || []).forEach(function(k) {
     if (existK.indexOf(k.name.trim().toLowerCase()) === -1)
