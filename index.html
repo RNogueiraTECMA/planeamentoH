@@ -552,6 +552,8 @@ var SCHEDULES = {
   cg: { start:8.5, end:17.5,hoursPerDay:7.5, label:'08:30–17:30',
         breaks:[{s:11,e:11.25,label:'Pausa 15min'},{s:13,e:14,label:'Almoço 1h'},{s:16,e:16.25,label:'Pausa 15min'}] },
   pf: { start:8.5, end:17.5,hoursPerDay:7.5, label:'08:30–17:30',
+        breaks:[{s:11,e:11.25,label:'Pausa 15min'},{s:13,e:14,label:'Almoço 1h'},{s:16,e:16.25,label:'Pausa 15min'}] },
+  ir: { start:8.5, end:17.5,hoursPerDay:7.5, label:'08:30–17:30',
         breaks:[{s:11,e:11.25,label:'Pausa 15min'},{s:13,e:14,label:'Almoço 1h'},{s:16,e:16.25,label:'Pausa 15min'}] }
 };
 
@@ -777,13 +779,8 @@ function onDataLoaded(result) {
   state.loaded = true;
   invalidateFabrilCache();
   hideLoader();
-  try {
-    var overloads = checkDeadlineOverload(todayISO());
-    if (overloads.length) {
-      setTimeout(function(){ overloads.forEach(function(w){ showToast('⚠️ ' + w, 'error'); }); }, 1000);
-    }
-    render();
-  } catch(e) { console.error('render error:', e); }
+  try { checkDeadlineOverload(todayISO()); } catch(e) {}
+  render();
 }
 
 function loadData() {
@@ -917,10 +914,15 @@ function render() {
     var el = document.getElementById('tab-' + name);
     if (el) el.style.display = name === state.tab ? '' : 'none';
   });
-  if (state.tab === 'items')    renderItems();
-  if (state.tab === 'kpis')     renderKpis();
-  if (state.tab === 'planning') renderPlanning();
-  if (state.tab === 'stats')    renderStats();
+  try {
+    if (state.tab === 'items')    renderItems();
+    else if (state.tab === 'kpis')     renderKpis();
+    else if (state.tab === 'planning') renderPlanning();
+    else if (state.tab === 'stats')    renderStats();
+  } catch(e) {
+    console.error('Tab render error [' + state.tab + ']:', e);
+    showToast('Erro ao carregar aba: ' + e.message, 'error');
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2496,7 +2498,7 @@ function renderKpis() {
   html += '<div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">';
   ['rn','cg','pf','ir'].forEach(function(pk) {
     var a = pk===p;
-    html += '<button onclick="state.person=\'' + pk + '\';renderKpis()" style="padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:' + (a?'var(--navy)':'var(--surface)') + ';color:' + (a?'#fff':'var(--tx1)') + ';cursor:pointer;font-size:12px">' + PERSON_INFO[pk].firstName + '</button>';
+    html += '<button onclick="try{state.person=\'' + pk + '\';renderKpis();}catch(e){showToast(e.message,\'error\');}" style="padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:' + (a?'var(--navy)':'var(--surface)') + ';color:' + (a?'#fff':'var(--tx1)') + ';cursor:pointer;font-size:12px">' + PERSON_INFO[pk].firstName + '</button>';
   });
   html += '</div>';
   if (!kpis.length) {
