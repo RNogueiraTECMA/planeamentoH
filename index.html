@@ -2710,7 +2710,25 @@ function extractPdfText(data, cb) {
       (function(pg) {
         pdf.getPage(pg).then(function(page) {
           page.getTextContent().then(function(tc) {
-            pages[pg-1] = tc.items.map(function(it){ return it.str; }).join('\n');
+            // Group items by Y position (same visual line = similar Y coordinate)
+            var lineMap = {};
+            tc.items.forEach(function(item) {
+              if (!item.str || !item.str.trim()) return;
+              // Round Y to nearest 4 pts to group items on same visual line
+              var y = item.transform ? Math.round(item.transform[5] / 4) * 4 : 0;
+              var x = item.transform ? item.transform[4] : 0;
+              if (!lineMap[y]) lineMap[y] = [];
+              lineMap[y].push({x: x, str: item.str});
+            });
+            // Sort Y keys descending (PDF Y origin is bottom-left → higher Y = higher on page)
+            var ys = Object.keys(lineMap).map(Number).sort(function(a,b){ return b-a; });
+            var pageText = ys.map(function(y) {
+              return lineMap[y]
+                .sort(function(a,b){ return a.x - b.x; })
+                .map(function(it){ return it.str; })
+                .join(' ');
+            }).join('\n');
+            pages[pg-1] = pageText;
             if (++done === n) cb(pages.join('\n'));
           });
         });
@@ -2738,60 +2756,77 @@ function parsePlanningPDF(text) {
   };
   Object.keys(PMAP).forEach(function(n){ if (text.indexOf(n) >= 0) result.person_key = PMAP[n]; });
 
-  // Split into clean lines, filter page headers
-  var lines = text.split('\n').map(function(l){ return l.trim(); }).filter(function(l){
-    return l && !/^TecmaFoods\s*\|/.test(l);
-  });
+  // Clean lines: remove page headers, empty lines
+  var rawLines = text.split('\n').map(function(l){ return l.trim(); });
 
-  // ── Parse tasks line-by-line ─────────────────────────────────────────
+  // Rejoin split task headers (e.g. "Tarefa 1 -" on one line, title on next)
+  var lines = [];
+  var k = 0;
+  while (k < rawLines.length) {
+    var l = rawLines[k];
+    if (!l || /^TecmaFoods\s*\|/.test(l)) { k++; continue; }
+    // "Tarefa N" alone or "Tarefa N -" alone → rejoin with next line
+    if (/^Tarefa\s+\d+\s*[-–—‐]?\s*$/.test(l) && k+1 < rawLines.length) {
+      var next = rawLines[k+1].trim();
+      lines.push((l + ' ' + next).replace(/\s+/g,' '));
+      k += 2; continue;
+    }
+    lines.push(l);
+    k++;
+  }
+
+  // ── Parse tasks ──────────────────────────────────────────────────────────
   var seen = {};
   var i = 0;
   while (i < lines.length) {
     var line = lines[i];
-    var taskMatch = line.match(/^Tarefa\s+\d+\s*[-–—‐]\s*(.+)$/);
-    if (taskMatch) {
-      var taskTitle = taskMatch[1].trim();
-      // Join next 6 lines to find date info regardless of item splitting
-      var searchWindow = lines.slice(i + 1, Math.min(i + 7, lines.length)).join(' ');
-      var dateMatch = searchWindow.match(/Início:\s*(\d{2}\/\d{2}\/\d{4}).*?Deadline:\s*(\d{2}\/\d{2}\/\d{4})/);
-      if (dateMatch) {
-        var startDate = ptDate(dateMatch[1]);
-        var endDate   = ptDate(dateMatch[2]);
-        // Advance i past the date line
+    var tm = line.match(/^Tarefa\s+\d+\s*[-–—‐]\s*(.+)$/);
+    if (tm) {
+      var taskTitle = tm[1].trim();
+      // Search for dates in window of up to 10 following lines
+      var winText = lines.slice(i+1, Math.min(i+11, lines.length)).join(' ');
+      var dm = winText.match(/Início:\s*(\d{2}\/\d{2}\/\d{4}).*?Deadline:\s*(\d{2}\/\d{2}\/\d{4})/);
+      if (dm) {
+        // Advance j past ALL date-related lines (Início:, Deadline:, bare dates, month header)
         var j = i + 1;
-        while (j < lines.length && j < i + 7) {
-          if (/Início:.*\d{2}\/\d{2}\/\d{4}/.test(lines[j]) || /Deadline:.*\d{2}\/\d{2}\/\d{4}/.test(lines[j])) {
-            j++; break;
-          }
-          j++;
+        while (j < Math.min(i+11, lines.length)) {
+          var ll = lines[j];
+          var isDateLine = /Início:/i.test(ll) || /Deadline:/i.test(ll) ||
+                           /^\d{2}\/\d{2}\/\d{4}/.test(ll) ||
+                           /^\d{4}-\d{2}-\d{2}/.test(ll);
+          var isSectionHeader = /^Tarefa\s+\d+/.test(ll) || /^MÊS\s+\d+/.test(ll) ||
+                                /^KPIs? mensais/i.test(ll) || /^Objetivo mensal:/.test(ll);
+          if (isSectionHeader) break;
+          if (isDateLine) { j++; continue; }
+          break; // first non-date, non-header line = start of description
         }
-        // Collect description lines until next task/section
+        // Collect description: stop at next task/section header
         var descLines = [];
         while (j < lines.length) {
           var dl = lines[j];
-          if (/^Tarefa\s+\d+\s*[-–—‐]/.test(dl) ||
-              /^MÊS\s+\d+/.test(dl) ||
-              /^KPIs? mensais/.test(dl) ||
-              /^Objetivo mensal:/.test(dl) ||
+          if (/^Tarefa\s+\d+\s*[-–—‐]/.test(dl) || /^MÊS\s+\d+/.test(dl) ||
+              /^KPIs? mensais/i.test(dl) || /^Objetivo mensal:/.test(dl) ||
               /^\d{2}\/\d{2}\/\d{4}\s+[Aa]\s+\d{2}\/\d{2}\/\d{4}$/.test(dl)) { break; }
-          descLines.push(dl);
+          // Filter out any date fragments that leaked through
+          if (/^Início:/i.test(dl) || /^Deadline:/i.test(dl) ||
+              /^\d{2}\/\d{2}\/\d{4}\s*$/.test(dl)) { j++; continue; }
+          if (dl) descLines.push(dl);
           j++;
         }
         if (!seen[taskTitle]) {
           seen[taskTitle] = 1;
           result.tasks.push({
-            desc: taskTitle, start: startDate, end: endDate,
+            desc: taskTitle, start: ptDate(dm[1]), end: ptDate(dm[2]),
             hours: 0, notes: descLines.join('\n').trim()
           });
         }
-        i = j;
-        continue;
+        i = j; continue;
       }
     }
     i++;
   }
 
-  // ── Parse KPIs ───────────────────────────────────────────────────────
+  // ── Parse KPIs ───────────────────────────────────────────────────────────
   var ks = text.indexOf('KPIs mensais'), ke = text.indexOf('MÊS 1');
   if (ks >= 0) {
     var kSec = '\n' + text.substring(ks, ke > ks ? ke : text.length);
@@ -2804,8 +2839,10 @@ function parsePlanningPDF(text) {
         result.kpis.push({ name: name, target: km[3], unit: km[4], notes: notes });
     }
     if (!result.kpis.length) {
+      // Fallback: look for "N Name ... NN %" on cleaner text
+      var cleanKpi = kSec.replace(/\n/g,' ');
       var kReB = /\b(\d)\s+([\wÀ-úçãõêé\s\/\(\)\-]+?)\s+(\d+)\s+(%|\w+)/g;
-      while ((km = kReB.exec(kSec)) !== null) {
+      while ((km = kReB.exec(cleanKpi)) !== null) {
         var name2 = km[2].trim();
         if (name2.length > 8 && !/^(KPI|Notas|Objetivo|Unidade)/.test(name2))
           result.kpis.push({ name: name2, target: km[3], unit: km[4], notes: '' });
