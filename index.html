@@ -776,12 +776,14 @@ function onDataLoaded(result) {
   if (!state.planDay) state.planDay = isoDate(new Date());
   state.loaded = true;
   invalidateFabrilCache();
-  var overloads = checkDeadlineOverload(todayISO());
-  if (overloads.length) {
-    setTimeout(function(){ overloads.forEach(function(w){ showToast('⚠️ ' + w, 'error'); }); }, 1000);
-  }
   hideLoader();
-  render();
+  try {
+    var overloads = checkDeadlineOverload(todayISO());
+    if (overloads.length) {
+      setTimeout(function(){ overloads.forEach(function(w){ showToast('⚠️ ' + w, 'error'); }); }, 1000);
+    }
+    render();
+  } catch(e) { console.error('render error:', e); }
 }
 
 function loadData() {
@@ -2834,7 +2836,7 @@ function calcAutoKpi(kpi, person, month) {
 }
 
 function getKpiValor(kpi, person, month) {
-  if (isAutoKpi(kpi.name)) return calcAutoKpi(kpi, person, month);
+  if (isAutoKpi(kpi)) return calcAutoKpi(kpi, person, month);
   return kpi.valor !== '' && kpi.valor !== undefined ? parseFloat(kpi.valor) : null;
 }
 
