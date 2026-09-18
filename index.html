@@ -2794,6 +2794,55 @@ document.addEventListener('click', function(e) {
   if (e.target.classList.contains('overlay')) closeModal(e.target.id);
 });
 
+function openNewAbsence() {
+  var p = state.person;
+  document.getElementById('absence-id').value = '';
+  document.getElementById('absence-person-key').value = p;
+  document.getElementById('absence-type').value = 'Falta';
+  document.getElementById('absence-start').value = todayISO();
+  document.getElementById('absence-end').value = todayISO();
+  document.getElementById('absence-notes').value = '';
+  document.getElementById('modal-absence-title').textContent = 'Nova Aus\u00eancia \u2014 ' + PERSON_LABELS[p];
+  openModal('modal-absence');
+}
+function openEditAbsence(absence, personKey) {
+  document.getElementById('absence-id').value = absence.id;
+  document.getElementById('absence-person-key').value = personKey;
+  document.getElementById('absence-type').value = absence.type_ || 'Falta';
+  document.getElementById('absence-start').value = absence.start || '';
+  document.getElementById('absence-end').value = absence.end || absence.start || '';
+  document.getElementById('absence-notes').value = absence.notes || '';
+  document.getElementById('modal-absence-title').textContent = 'Editar Aus\u00eancia';
+  openModal('modal-absence');
+}
+function saveAbsence() {
+  var id    = document.getElementById('absence-id').value;
+  var p     = document.getElementById('absence-person-key').value;
+  var type_ = document.getElementById('absence-type').value;
+  var start = document.getElementById('absence-start').value;
+  var end   = document.getElementById('absence-end').value;
+  var notes = document.getElementById('absence-notes').value;
+  if (!start) { showToast('Selecciona uma data de in\u00edcio', 'error'); return; }
+  if (!end || end < start) end = start;
+  var action = id ? 'editAbsence' : 'addAbsence';
+  var payload = { person:p, type_:type_, start:start, end:end, notes:notes };
+  if (id) payload.id = id;
+  closeModal('modal-absence');
+  callServer(action, payload, function(err, res) {
+    if (err || (res && res.error)) { showToast('Erro ao guardar aus\u00eancia', 'error'); return; }
+    showToast((id ? 'Aus\u00eancia actualizada' : 'Aus\u00eancia registada') + ' \u2713', 'success');
+    loadData();
+  });
+}
+function deleteAbsenceById(id, p) {
+  if (!confirm('Eliminar esta aus\u00eancia?')) return;
+  callServer('deleteAbsence', { id:id, person:p }, function(err, res) {
+    if (err || (res && res.error)) { showToast('Erro ao eliminar', 'error'); return; }
+    showToast('Aus\u00eancia eliminada', 'success');
+    loadData();
+  });
+}
+
 </script>
 <!-- MODAL KPI -->
 <div class="overlay hidden" id="modal-kpi">
