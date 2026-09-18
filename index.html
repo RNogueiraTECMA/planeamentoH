@@ -2756,9 +2756,13 @@ function parsePlanningPDF(text) {
     'Ricardo Nogueira':'rn', 'Cristiana Gon\u00e7alves':'cg', 'Cristiana Goncalves':'cg',
     'Pedro Fernandes':'pf', 'In\u00eas Reis':'ir', 'Ines Reis':'ir'
   };
+  // Word-by-word match so middle names don't break detection
+  function nameInText(canonical, text) {
+    return canonical.split(' ').every(function(w){ return text.indexOf(w) >= 0; });
+  }
   var pm = cleaned.match(/PESSOA:\s*(.+)/);
-  if (pm) { var pN=pm[1].trim(); Object.keys(PMAP).forEach(function(n){ if (pN.indexOf(n)>=0) result.person_key=PMAP[n]; }); }
-  if (!result.person_key) Object.keys(PMAP).forEach(function(n){ if (cleaned.indexOf(n)>=0) result.person_key=PMAP[n]; });
+  if (pm) { var pN=pm[1].trim(); Object.keys(PMAP).forEach(function(n){ if (nameInText(n,pN)) result.person_key=PMAP[n]; }); }
+  if (!result.person_key) Object.keys(PMAP).forEach(function(n){ if (nameInText(n,cleaned)) result.person_key=PMAP[n]; });
 
   var lines = cleaned.split('\n').map(function(l){ return l.trim(); }).filter(Boolean);
   var curTask = null, curKpi = null;
