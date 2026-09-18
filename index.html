@@ -707,32 +707,6 @@ function absenceLabel(a) {
 
 // Returns the effective schedule for person p on a given day
 // Checks for temporary schedule overrides first
-function getScheduleForDay(p, day) {
-  var base = SCHEDULES[p];
-  var temps = (state.data.schedules && state.data.schedules[p]) || [];
-  for (var i = 0; i < temps.length; i++) {
-    var t = temps[i];
-    if (t.start && t.end && day >= t.start && day <= t.end && t.startHour && t.endHour) {
-      // Parse hours like '06:00' → 6.0, '09:00' → 9.0
-      var sh = parseFloat(t.startHour.split(':')[0]) + parseFloat(t.startHour.split(':')[1]||0)/60;
-      var eh = parseFloat(t.endHour.split(':')[0])   + parseFloat(t.endHour.split(':')[1]||0)/60;
-      if (sh < eh) {
-        // Temporary schedule: shorter shift, minimal breaks, no lunch
-        var breaks = [];
-        var duration = eh - sh;
-        // Add a break only if shift ≥ 3h
-        if (duration >= 3) {
-          var breakAt = sh + Math.floor(duration / 2);
-          breaks.push({ s: breakAt, e: breakAt + 0.25, label: 'Pausa 15min' });
-        }
-        var lbl = ('0'+Math.floor(sh)).slice(-2)+':'+('0'+Math.round((sh%1)*60)).slice(-2)+
-                  '–'+('0'+Math.floor(eh)).slice(-2)+':'+('0'+Math.round((eh%1)*60)).slice(-2)+' (temp.)';
-        return { start:sh, end:eh, breaks:breaks, hoursPerDay:duration, label:lbl, isTemp:true };
-      }
-    }
-  }
-  return base;
-}
 
 // Returns a forced-fab entry if this person is forced to fabril at hh on day
 function getForcedFab(p, day, hh) {
