@@ -895,9 +895,7 @@ function render() {
     else if (state.tab === 'stats')    renderStats();
   } catch(e) {
     console.error('Tab render error [' + state.tab + ']:', e);
-    var errMsg = '[' + state.tab + '] ' + e.message + ' @ ' + (e.stack||'').split('\n')[1];
-    var c = document.getElementById('toast-container');
-    if (c) { var t = document.createElement('div'); t.className='toast error'; t.style.cssText='opacity:1;transform:none;padding:14px;font-size:12px;max-width:400px'; t.textContent=errMsg; c.appendChild(t); setTimeout(function(){t.remove();},15000); }
+    showToast('Erro ao carregar aba: ' + e.message, 'error');
   }
 }
 
@@ -1431,6 +1429,36 @@ function getWeekMon(d, offset) {
   dt.setHours(0,0,0,0);
   return dt;
 }
+function todayISO() {
+  var dt = new Date();
+  var y  = dt.getFullYear();
+  var m  = ('0'+(dt.getMonth()+1)).slice(-2);
+  var dd = ('0'+dt.getDate()).slice(-2);
+  return y+'-'+m+'-'+dd;
+}
+function formatDate(s) {
+  if (!s) return '—';
+  try {
+    var d = new Date(s + 'T12:00:00');
+    return d.toLocaleDateString('pt-PT', { day:'2-digit', month:'2-digit', year:'numeric' });
+  } catch(e) { return s; }
+}
+function formatTime(v) {
+  if (!v) return '';
+  var s = String(v).trim();
+  if (/^\d{1,2}:\d{2}/.test(s)) return s.substring(0,5);
+  try {
+    var d = new Date(s);
+    if (!isNaN(d.getTime())) {
+      return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);
+    }
+  } catch(e) {}
+  return s.substring(0,5);
+}
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 function isoDate(d) {
   var dt = new Date(d);
   var y  = dt.getFullYear();
