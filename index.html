@@ -2539,10 +2539,16 @@ function renderKpis() {
     html += '<button onclick="state.person=\'' + pk + '\';renderKpis()" style="padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:' + (a?'var(--navy)':'var(--surface)') + ';color:' + (a?'#fff':'var(--tx1)') + ';cursor:pointer;font-size:12px">' + PERSON_INFO[pk].firstName + '</button>';
   });
   html += '</div>';
+  var activeKpis = kpis.filter(function(k){ return k.status !== 'Concluído'; });
+  var doneKpis   = kpis.filter(function(k){ return k.status === 'Concluído'; });
+
   if (!kpis.length) {
     html += '<div style="color:var(--tx3);text-align:center;padding:32px 0;font-size:13px">Sem KPIs definidos para ' + PERSON_INFO[p].firstName + '</div>';
   } else {
-    kpis.forEach(function(k) {
+    if (activeKpis.length) {
+      html += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--tx3);margin-bottom:8px">Em curso (' + activeKpis.length + ')</div>';
+    }
+    activeKpis.forEach(function(k) {
       var val = k.valor ? parseFloat(k.valor) : null;
       var tgt = k.target ? parseFloat(k.target) : null;
       var ok  = val!==null && tgt!==null && val>=tgt;
