@@ -2064,98 +2064,96 @@ function doDeleteEvent(id, p) {
 //  STATS TAB
 // ═══════════════════════════════════════════════════════════
 function renderStats() {
-  var p = state.person;
-  var month = state.statsMonth || todayISO().substring(0,7); // YYYY-MM
+  var p     = state.person;
+  var month = state.statsMonth || todayISO().substring(0,7);
+  var tasks = state.data.tasks[p] || [];
+  var kpis  = (state.data.kpis||[]).filter(function(k){ return k.person===p; });
+  var today = todayISO();
+  var mLbl  = new Date(month+'-15').toLocaleDateString('pt-PT',{month:'long',year:'numeric'});
 
-  // All tasks / events for this person
-  var tasks  = state.data.tasks[p]  || [];
-  var kpis   = (state.data.kpis||[]).filter(function(k){ return k.person===p; });
-  var today  = todayISO();
-
-  // Tasks in selected month (by deadline)
-  var monthTasks = tasks.filter(function(t){ return t.end && t.end.substring(0,7)===month; });
-  var monthDone  = monthTasks.filter(function(t){ return t.status==='Concluída'||t.status==='Concluida'; });
-  var monthActive= monthTasks.filter(function(t){ return t.status!=='Concluída'&&t.status!=='Concluida'; });
-
-  // All-time stats
+  // All-time
   var allDone   = tasks.filter(function(t){ return t.status==='Concluída'||t.status==='Concluida'; });
   var allActive = tasks.filter(function(t){ return t.status!=='Concluída'&&t.status!=='Concluida'; });
   var overdue   = allActive.filter(function(t){ return t.end && t.end < today; });
 
-  // % tarefas concluídas no mês
-  var pctConc = monthTasks.length > 0 ? Math.round(monthDone.length/monthTasks.length*100) : null;
+  // Month
+  var mTasks  = tasks.filter(function(t){ return t.end && t.end.substring(0,7)===month; });
+  var mDone   = mTasks.filter(function(t){ return t.status==='Concluída'||t.status==='Concluida'; });
+  var onTime  = mDone.filter(function(t){ return !t.completedAt||t.completedAt<=t.end; });
+  var pctConc = mTasks.length  > 0 ? Math.round(mDone.length/mTasks.length*100)   : null;
+  var pctDead = mDone.length   > 0 ? Math.round(onTime.length/mDone.length*100)   : null;
+  var kpiOk   = kpis.filter(function(k){ return k.target&&k.valor&&parseFloat(k.valor)>=parseFloat(k.target); });
+  var pctKpi  = kpis.length    > 0 ? Math.round(kpiOk.length/kpis.length*100)     : null;
 
-  // % deadlines cumpridos (concluídas a tempo = completedAt <= end, ou se não há completedAt assume a tempo)
-  var onTime  = monthDone.filter(function(t){ return !t.completedAt || t.completedAt <= t.end; });
-  var pctDead = monthDone.length > 0 ? Math.round(onTime.length/monthDone.length*100) : null;
-
-  // KPIs
-  var kpiTotal    = kpis.length;
-  var kpiAchieved = kpis.filter(function(k){
-    if (!k.target || !k.valor) return false;
-    return parseFloat(k.valor) >= parseFloat(k.target);
-  }).length;
-  var pctKpi = kpiTotal > 0 ? Math.round(kpiAchieved/kpiTotal*100) : null;
-
-  function pctBar(pct, label) {
-    if (pct === null) return '<div style="color:var(--tx3);font-size:12px">'+label+': sem dados</div>';
-    var col = pct>=100?'var(--green)':pct>=70?'var(--orange)':'var(--red)';
-    return '<div style="margin-bottom:12px">'
-      +'<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">'
-      +'<span>'+label+'</span>'
-      +'<span style="font-weight:700;color:'+col+'">'+pct+'%</span></div>'
-      +'<div style="background:var(--border);border-radius:4px;height:8px">'
-      +'<div style="background:'+col+';width:'+Math.min(pct,100)+'%;height:100%;border-radius:4px"></div>'
-      +'</div></div>';
+  function bigMetric(pct, label, sub) {
+    var isNull = pct === null;
+    var col = isNull ? '#94a3b8' : pct>=80 ? '#16a34a' : pct>=50 ? '#d97316' : '#dc2626';
+    var bg  = isNull ? 'rgba(148,163,184,.08)' : pct>=80 ? 'rgba(22,163,74,.08)' : pct>=50 ? 'rgba(217,119,22,.08)' : 'rgba(220,38,38,.08)';
+    var border = isNull ? 'rgba(148,163,184,.2)' : pct>=80 ? 'rgba(22,163,74,.25)' : pct>=50 ? 'rgba(217,119,22,.25)' : 'rgba(220,38,38,.25)';
+    return '<div style="background:'+bg+';border:1px solid '+border+';border-radius:12px;padding:20px;flex:1;min-width:0">'
+      +'<div style="font-size:36px;font-weight:800;color:'+col+';line-height:1">'+(isNull?'—':pct+'%')+'</div>'
+      +'<div style="font-size:13px;font-weight:600;color:var(--tx1);margin-top:6px">'+label+'</div>'
+      +'<div style="font-size:11px;color:var(--tx3);margin-top:2px">'+sub+'</div>'
+      +(pct!==null?'<div style="background:rgba(0,0,0,.08);border-radius:4px;height:4px;margin-top:10px"><div style="background:'+col+';width:'+Math.min(pct,100)+'%;height:100%;border-radius:4px"></div></div>':'')
+      +'</div>';
   }
 
   var html = '';
 
-  // Header with month selector
-  html += '<div class="section-header">';
-  html += '<div class="section-title">Estatísticas — ' + PERSON_LABELS[p] + '</div>';
-  html += '<input type="month" value="'+month+'" style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--tx1);font-size:13px" onchange="state.statsMonth=this.value;renderStats()">';
+  // Header
+  html += '<div class="section-header" style="align-items:center">';
+  html += '<div class="section-title">Estatísticas — '+PERSON_LABELS[p]+'</div>';
+  html += '<input type="month" value="'+month+'" '
+        +'style="padding:5px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--tx1);font-size:13px;cursor:pointer" '
+        +'onchange="state.statsMonth=this.value;renderStats()">';
   html += '</div>';
 
-  // Summary cards (all-time)
-  html += '<div class="stats-grid" style="margin-bottom:16px">';
+  // Top row: 4 small stat cards
+  html += '<div class="stats-grid" style="margin-bottom:20px">';
   html += '<div class="stat-card"><div class="stat-num">'+allActive.length+'</div><div class="stat-label">Em curso</div></div>';
   html += '<div class="stat-card"><div class="stat-num">'+allDone.length+'</div><div class="stat-label">Concluídas</div></div>';
   html += '<div class="stat-card"><div class="stat-num">'+tasks.length+'</div><div class="stat-label">Total</div></div>';
-  html += '<div class="stat-card"><div class="stat-num">'+kpiTotal+'</div><div class="stat-label">KPIs</div></div>';
+  html += '<div class="stat-card"><div class="stat-num">'+kpis.length+'</div><div class="stat-label">KPIs</div></div>';
   html += '</div>';
 
   // Overdue alert
-  if (overdue.length > 0) {
-    html += '<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:10px 14px;margin-bottom:16px">';
-    html += '<span style="font-size:13px;font-weight:600;color:var(--red)">⚠️ '+overdue.length+' tarefa(s) em atraso</span>';
-    html += '</div>';
+  if (overdue.length) {
+    html += '<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:10px;padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:10px">';
+    html += '<span style="font-size:18px">⚠️</span>';
+    html += '<div><div style="font-size:13px;font-weight:600;color:var(--red)">'+overdue.length+' tarefa(s) em atraso</div>';
+    overdue.forEach(function(t){ html += '<div style="font-size:11px;color:var(--tx2);margin-top:1px">• '+esc(t.desc)+' — deadline '+formatDate(t.end)+'</div>'; });
+    html += '</div></div>';
   }
 
-  // Month performance section
-  html += '<div class="card" style="margin-bottom:16px">';
-  html += '<div class="card-header"><div class="card-title">📅 Desempenho — ' + month.split('-')[1]+'/'+month.split('-')[0] + '</div></div>';
-  html += '<div style="padding:4px 0">';
-  html += pctBar(pctConc, 'Taxa de conclusão de tarefas ('+monthDone.length+'/'+monthTasks.length+')');
-  html += pctBar(pctDead, 'Cumprimento de deadlines ('+onTime.length+'/'+monthDone.length+' concluídas a tempo)');
-  if (kpiTotal > 0) {
-    html += pctBar(pctKpi, 'KPIs atingidos ('+kpiAchieved+'/'+kpiTotal+')');
-    // KPI detail
+  // Month label
+  html += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--tx3);margin-bottom:12px">'+mLbl+'</div>';
+
+  // Big metrics row
+  html += '<div style="display:flex;gap:12px;margin-bottom:20px">';
+  html += bigMetric(pctConc, 'Taxa de conclusão', mDone.length+'/'+mTasks.length+' tarefas concluídas');
+  html += bigMetric(pctDead, 'Cumprimento de deadlines', onTime.length+'/'+mDone.length+' dentro do prazo');
+  html += bigMetric(pctKpi,  'KPIs atingidos', kpiOk.length+'/'+kpis.length+' KPIs ≥ objetivo');
+  html += '</div>';
+
+  // KPI detail
+  if (kpis.length) {
+    html += '<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">';
+    html += '<div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--tx2)">Detalhe KPIs</div>';
     kpis.forEach(function(k) {
-      if (!k.target) return;
-      var val  = k.valor ? parseFloat(k.valor) : null;
-      var tgt  = parseFloat(k.target);
-      var ok   = val !== null && val >= tgt;
-      var col  = val === null ? 'var(--tx3)' : ok ? 'var(--green)' : 'var(--red)';
-      html += '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-top:1px solid var(--border)">';
-      html += '<span style="color:var(--tx2)">'+esc(k.name)+'</span>';
-      html += '<span style="color:'+col+';font-weight:600">'+(val!==null?val+(k.unit?' '+esc(k.unit):''):'—')+' / '+tgt+(k.unit?' '+esc(k.unit):'')+'</span>';
-      html += '</div>';
+      var val = k.valor ? parseFloat(k.valor) : null;
+      var tgt = k.target ? parseFloat(k.target) : null;
+      var ok  = val!==null && tgt!==null && val>=tgt;
+      var col = val===null||tgt===null ? 'var(--tx3)' : ok ? '#16a34a' : '#dc2626';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border)">';
+      html += '<span style="font-size:13px">'+esc(k.name)+'</span>';
+      html += '<div style="display:flex;align-items:center;gap:8px">';
+      html += '<span style="font-size:13px;font-weight:700;color:'+col+'">'+(val!==null?val+(k.unit?' '+k.unit:''):'—')+'</span>';
+      if (tgt!==null) html += '<span style="font-size:11px;color:var(--tx3)">/ '+tgt+(k.unit?' '+k.unit:'')+'</span>';
+      if (val!==null && tgt!==null) html += '<span style="font-size:10px;padding:2px 6px;border-radius:10px;background:'+(ok?'rgba(22,163,74,.12)':'rgba(220,38,38,.12)')+';color:'+col+'">'+(ok?'✓':'✗')+'</span>';
+      html += '</div></div>';
     });
-  } else {
-    html += '<div style="color:var(--tx3);font-size:12px">Sem KPIs definidos</div>';
+    html += '</div>';
   }
-  html += '</div></div>';
 
   document.getElementById('tab-stats').innerHTML = html;
 }
