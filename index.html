@@ -2563,6 +2563,25 @@ function renderKpis() {
       if (k.notes) html += '<span class="pill gray">' + esc(k.notes) + '</span>';
       html += '</div></div>';
     });
+
+    // Concluídos
+    if (doneKpis.length) {
+      html += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--tx3);margin:20px 0 8px">Concluídos (' + doneKpis.length + ')</div>';
+      doneKpis.forEach(function(k) {
+        var val = k.valor ? parseFloat(k.valor) : null;
+        var tgt = k.target ? parseFloat(k.target) : null;
+        var ok  = val!==null && tgt!==null && val>=tgt;
+        var col = ok ? '#16a34a' : '#dc2626';
+        html += '<div class="task-item done" style="margin-bottom:8px;opacity:.8">';
+        html += '<div class="task-top">';
+        html += '<div class="task-desc">' + esc(k.name) + '</div>';
+        html += '<div style="display:flex;align-items:center;gap:8px">';
+        html += '<span style="font-size:12px;font-weight:700;color:' + col + '">' + (ok?'✓':'✗') + ' ' + val + (k.unit?' '+esc(k.unit):'') + ' / ' + tgt + (k.unit?' '+esc(k.unit):'') + '</span>';
+        html += '<button class="icon-btn" data-act="editKpi" data-id="' + k.id + '" data-p="' + p + '">✏️</button>';
+        html += '<button class="icon-btn" data-act="deleteKpi" data-id="' + k.id + '" data-p="' + p + '">🗑️</button>';
+        html += '</div></div></div>';
+      });
+    }
   }
   document.getElementById('tab-kpis').innerHTML = html;
 }
