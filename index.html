@@ -2346,8 +2346,6 @@ function printWeekPlan(wStart, wEnd) {
   });
   doc += '</div>';
 
-  doc += '</body></html>';
-
   var win = window.open('', '_blank');
   win.document.write(doc);
   win.document.close();
@@ -2982,4 +2980,28 @@ function saveKpiValor() {
     </div>
   </div>
 </div>
-<input type="file" id="import-pdf-input" accept=".pdf" style="display:none" onchange="handleImportPDF(this)">
+<input type="file" id="import-pdf-input" accept=".pdf" style="display:none" onchange="handleImportPDF(this)"
+<!-- MODAL KPI VALOR -->
+<div class="overlay hidden" id="modal-kpi-valor">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-header">
+      <div class="modal-title">Registar Valor Atingido</div>
+      <button class="icon-btn" onclick="closeModal('modal-kpi-valor')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="kpiv-id">
+      <input type="hidden" id="kpiv-person">
+      <div style="font-size:14px;font-weight:600;margin-bottom:6px" id="kpiv-name"></div>
+      <div style="font-size:12px;color:var(--tx2);margin-bottom:16px" id="kpiv-obj"></div>
+      <div class="field"><label class="label">Valor atingido</label>
+        <input type="number" id="kpiv-valor" placeholder="Ex: 87" step="0.1">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-kpi-valor')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveKpiValor()">Guardar</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>
