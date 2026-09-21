@@ -2064,31 +2064,98 @@ function doDeleteEvent(id, p) {
 //  STATS TAB
 // ═══════════════════════════════════════════════════════════
 function renderStats() {
-  var html = '<div class="section-title" style="margin-bottom:20px">Estat\u00edsticas Globais</div>';
+  var p = state.person;
+  var month = state.statsMonth || todayISO().substring(0,7); // YYYY-MM
 
-  ['rn','cg','pf','ir'].forEach(function(p) {
-    var tasks  = state.data.tasks[p]  || [];
-    var events = state.data.events[p] || [];
-    var active = tasks.filter(function(t){ return t.status !== 'Conclu\u00edda' && t.status !== 'Concluida'; });
-    var done   = tasks.filter(function(t){ return t.status === 'Conclu\u00edda' || t.status === 'Concluida'; });
+  // All tasks / events for this person
+  var tasks  = state.data.tasks[p]  || [];
+  var kpis   = (state.data.kpis||[]).filter(function(k){ return k.person===p; });
+  var today  = todayISO();
 
-    html += '<div class="card" style="margin-bottom:16px">';
-    html += '<div class="card-header"><div class="card-title">\ud83d\udc64 ' + PERSON_LABELS[p] + '</div>';
-    html += '<span class="pill gray">' + getScheduleForDay(p, todayISO()).label + '</span></div>';
-    html += '<div class="stats-grid">';
-    html += '<div class="stat-card"><div class="stat-num">' + active.length + '</div><div class="stat-label">Em curso</div></div>';
-    html += '<div class="stat-card"><div class="stat-num">' + done.length   + '</div><div class="stat-label">Conclu\u00eddas</div></div>';
-    html += '<div class="stat-card"><div class="stat-num">' + tasks.length  + '</div><div class="stat-label">Total</div></div>';
-    html += '<div class="stat-card"><div class="stat-num">' + events.filter(function(e){ return e.status !== 'Eliminado'; }).length + '</div><div class="stat-label">Eventos</div></div>';
+  // Tasks in selected month (by deadline)
+  var monthTasks = tasks.filter(function(t){ return t.end && t.end.substring(0,7)===month; });
+  var monthDone  = monthTasks.filter(function(t){ return t.status==='Concluída'||t.status==='Concluida'; });
+  var monthActive= monthTasks.filter(function(t){ return t.status!=='Concluída'&&t.status!=='Concluida'; });
+
+  // All-time stats
+  var allDone   = tasks.filter(function(t){ return t.status==='Concluída'||t.status==='Concluida'; });
+  var allActive = tasks.filter(function(t){ return t.status!=='Concluída'&&t.status!=='Concluida'; });
+  var overdue   = allActive.filter(function(t){ return t.end && t.end < today; });
+
+  // % tarefas concluídas no mês
+  var pctConc = monthTasks.length > 0 ? Math.round(monthDone.length/monthTasks.length*100) : null;
+
+  // % deadlines cumpridos (concluídas a tempo = completedAt <= end, ou se não há completedAt assume a tempo)
+  var onTime  = monthDone.filter(function(t){ return !t.completedAt || t.completedAt <= t.end; });
+  var pctDead = monthDone.length > 0 ? Math.round(onTime.length/monthDone.length*100) : null;
+
+  // KPIs
+  var kpiTotal    = kpis.length;
+  var kpiAchieved = kpis.filter(function(k){
+    if (!k.target || !k.valor) return false;
+    return parseFloat(k.valor) >= parseFloat(k.target);
+  }).length;
+  var pctKpi = kpiTotal > 0 ? Math.round(kpiAchieved/kpiTotal*100) : null;
+
+  function pctBar(pct, label) {
+    if (pct === null) return '<div style="color:var(--tx3);font-size:12px">'+label+': sem dados</div>';
+    var col = pct>=100?'var(--green)':pct>=70?'var(--orange)':'var(--red)';
+    return '<div style="margin-bottom:12px">'
+      +'<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">'
+      +'<span>'+label+'</span>'
+      +'<span style="font-weight:700;color:'+col+'">'+pct+'%</span></div>'
+      +'<div style="background:var(--border);border-radius:4px;height:8px">'
+      +'<div style="background:'+col+';width:'+Math.min(pct,100)+'%;height:100%;border-radius:4px"></div>'
+      +'</div></div>';
+  }
+
+  var html = '';
+
+  // Header with month selector
+  html += '<div class="section-header">';
+  html += '<div class="section-title">Estatísticas — ' + PERSON_LABELS[p] + '</div>';
+  html += '<input type="month" value="'+month+'" style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--tx1);font-size:13px" onchange="state.statsMonth=this.value;renderStats()">';
+  html += '</div>';
+
+  // Summary cards (all-time)
+  html += '<div class="stats-grid" style="margin-bottom:16px">';
+  html += '<div class="stat-card"><div class="stat-num">'+allActive.length+'</div><div class="stat-label">Em curso</div></div>';
+  html += '<div class="stat-card"><div class="stat-num">'+allDone.length+'</div><div class="stat-label">Concluídas</div></div>';
+  html += '<div class="stat-card"><div class="stat-num">'+tasks.length+'</div><div class="stat-label">Total</div></div>';
+  html += '<div class="stat-card"><div class="stat-num">'+kpiTotal+'</div><div class="stat-label">KPIs</div></div>';
+  html += '</div>';
+
+  // Overdue alert
+  if (overdue.length > 0) {
+    html += '<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:10px 14px;margin-bottom:16px">';
+    html += '<span style="font-size:13px;font-weight:600;color:var(--red)">⚠️ '+overdue.length+' tarefa(s) em atraso</span>';
     html += '</div>';
+  }
 
-    var today = new Date(); today.setHours(0,0,0,0);
-    var overdue = active.filter(function(t){ return t.end && new Date(t.end) < today; });
-    if (overdue.length > 0) {
-      html += '<div style="margin-top:8px"><span class="pill red">\u26a0\ufe0f ' + overdue.length + ' tarefa(s) em atraso</span></div>';
-    }
-    html += '</div>';
-  });
+  // Month performance section
+  html += '<div class="card" style="margin-bottom:16px">';
+  html += '<div class="card-header"><div class="card-title">📅 Desempenho — ' + month.split('-')[1]+'/'+month.split('-')[0] + '</div></div>';
+  html += '<div style="padding:4px 0">';
+  html += pctBar(pctConc, 'Taxa de conclusão de tarefas ('+monthDone.length+'/'+monthTasks.length+')');
+  html += pctBar(pctDead, 'Cumprimento de deadlines ('+onTime.length+'/'+monthDone.length+' concluídas a tempo)');
+  if (kpiTotal > 0) {
+    html += pctBar(pctKpi, 'KPIs atingidos ('+kpiAchieved+'/'+kpiTotal+')');
+    // KPI detail
+    kpis.forEach(function(k) {
+      if (!k.target) return;
+      var val  = k.valor ? parseFloat(k.valor) : null;
+      var tgt  = parseFloat(k.target);
+      var ok   = val !== null && val >= tgt;
+      var col  = val === null ? 'var(--tx3)' : ok ? 'var(--green)' : 'var(--red)';
+      html += '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-top:1px solid var(--border)">';
+      html += '<span style="color:var(--tx2)">'+esc(k.name)+'</span>';
+      html += '<span style="color:'+col+';font-weight:600">'+(val!==null?val+(k.unit?' '+esc(k.unit):''):'—')+' / '+tgt+(k.unit?' '+esc(k.unit):'')+'</span>';
+      html += '</div>';
+    });
+  } else {
+    html += '<div style="color:var(--tx3);font-size:12px">Sem KPIs definidos</div>';
+  }
+  html += '</div></div>';
 
   document.getElementById('tab-stats').innerHTML = html;
 }
