@@ -1430,34 +1430,21 @@ function getWeekMon(d, offset) {
   return dt;
 }
 function todayISO() {
-  var dt = new Date();
-  var y  = dt.getFullYear();
-  var m  = ('0'+(dt.getMonth()+1)).slice(-2);
-  var dd = ('0'+dt.getDate()).slice(-2);
+  var dt=new Date(),y=dt.getFullYear(),m=('0'+(dt.getMonth()+1)).slice(-2),dd=('0'+dt.getDate()).slice(-2);
   return y+'-'+m+'-'+dd;
 }
 function formatDate(s) {
   if (!s) return '—';
-  try {
-    var d = new Date(s + 'T12:00:00');
-    return d.toLocaleDateString('pt-PT', { day:'2-digit', month:'2-digit', year:'numeric' });
-  } catch(e) { return s; }
+  try { var d=new Date(s+'T12:00:00'); return d.toLocaleDateString('pt-PT',{day:'2-digit',month:'2-digit',year:'numeric'}); } catch(e){return s;}
 }
 function formatTime(v) {
   if (!v) return '';
-  var s = String(v).trim();
+  var s=String(v).trim();
   if (/^\d{1,2}:\d{2}/.test(s)) return s.substring(0,5);
-  try {
-    var d = new Date(s);
-    if (!isNaN(d.getTime())) {
-      return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);
-    }
-  } catch(e) {}
+  try { var d=new Date(s); if (!isNaN(d.getTime())) return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2); } catch(e){}
   return s.substring(0,5);
 }
-function esc(s) {
-  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 function isoDate(d) {
   var dt = new Date(d);
@@ -2064,98 +2051,44 @@ function doDeleteEvent(id, p) {
 //  STATS TAB
 // ═══════════════════════════════════════════════════════════
 function renderStats() {
-  var p     = state.person;
-  var month = state.statsMonth || todayISO().substring(0,7);
-  var tasks = state.data.tasks[p] || [];
-  var kpis  = (state.data.kpis||[]).filter(function(k){ return k.person===p; });
-  var today = todayISO();
-  var mLbl  = new Date(month+'-15').toLocaleDateString('pt-PT',{month:'long',year:'numeric'});
-
-  // All-time
-  var allDone   = tasks.filter(function(t){ return t.status==='Concluída'||t.status==='Concluida'; });
-  var allActive = tasks.filter(function(t){ return t.status!=='Concluída'&&t.status!=='Concluida'; });
-  var overdue   = allActive.filter(function(t){ return t.end && t.end < today; });
-
-  // Month
-  var mTasks  = tasks.filter(function(t){ return t.end && t.end.substring(0,7)===month; });
-  var mDone   = mTasks.filter(function(t){ return t.status==='Concluída'||t.status==='Concluida'; });
-  var onTime  = mDone.filter(function(t){ return !t.completedAt||t.completedAt<=t.end; });
-  var pctConc = mTasks.length  > 0 ? Math.round(mDone.length/mTasks.length*100)   : null;
-  var pctDead = mDone.length   > 0 ? Math.round(onTime.length/mDone.length*100)   : null;
-  var kpiOk   = kpis.filter(function(k){ return k.target&&k.valor&&parseFloat(k.valor)>=parseFloat(k.target); });
-  var pctKpi  = kpis.length    > 0 ? Math.round(kpiOk.length/kpis.length*100)     : null;
-
-  function bigMetric(pct, label, sub) {
-    var isNull = pct === null;
-    var col = isNull ? '#94a3b8' : pct>=80 ? '#16a34a' : pct>=50 ? '#d97316' : '#dc2626';
-    var bg  = isNull ? 'rgba(148,163,184,.08)' : pct>=80 ? 'rgba(22,163,74,.08)' : pct>=50 ? 'rgba(217,119,22,.08)' : 'rgba(220,38,38,.08)';
-    var border = isNull ? 'rgba(148,163,184,.2)' : pct>=80 ? 'rgba(22,163,74,.25)' : pct>=50 ? 'rgba(217,119,22,.25)' : 'rgba(220,38,38,.25)';
-    return '<div style="background:'+bg+';border:1px solid '+border+';border-radius:12px;padding:20px;flex:1;min-width:0">'
-      +'<div style="font-size:36px;font-weight:800;color:'+col+';line-height:1">'+(isNull?'—':pct+'%')+'</div>'
+  var p=state.person, month=state.statsMonth||todayISO().substring(0,7);
+  var tasks=state.data.tasks[p]||[], kpis=(state.data.kpis||[]).filter(function(k){return k.person===p;}), today=todayISO();
+  var mLbl=new Date(month+'-15').toLocaleDateString('pt-PT',{month:'long',year:'numeric'});
+  var allDone=tasks.filter(function(t){return t.status==='Conclu\u00edda'||t.status==='Concluida';}),allActive=tasks.filter(function(t){return t.status!=='Conclu\u00edda'&&t.status!=='Concluida';});
+  var overdue=allActive.filter(function(t){return t.end&&t.end<today;});
+  var mTasks=tasks.filter(function(t){return t.end&&t.end.substring(0,7)===month;}),mDone=mTasks.filter(function(t){return t.status==='Conclu\u00edda'||t.status==='Concluida';});
+  var onTime=mDone.filter(function(t){return !t.completedAt||t.completedAt<=t.end;});
+  var pctConc=mTasks.length>0?Math.round(mDone.length/mTasks.length*100):null;
+  var pctDead=mDone.length>0?Math.round(onTime.length/mDone.length*100):null;
+  var kpiOk=kpis.filter(function(k){return k.target&&k.valor&&parseFloat(k.valor)>=parseFloat(k.target);});
+  var pctKpi=kpis.length>0?Math.round(kpiOk.length/kpis.length*100):null;
+  function bigMetric(pct,label,sub){
+    var isN=pct===null,col=isN?'#94a3b8':pct>=80?'#16a34a':pct>=50?'#d97316':'#dc2626';
+    var bg=isN?'rgba(148,163,184,.08)':pct>=80?'rgba(22,163,74,.08)':pct>=50?'rgba(217,119,22,.08)':'rgba(220,38,38,.08)';
+    var br=isN?'rgba(148,163,184,.2)':pct>=80?'rgba(22,163,74,.25)':pct>=50?'rgba(217,119,22,.25)':'rgba(220,38,38,.25)';
+    return '<div style="background:'+bg+';border:1px solid '+br+';border-radius:12px;padding:20px;flex:1;min-width:0">'
+      +'<div style="font-size:36px;font-weight:800;color:'+col+';line-height:1">'+(isN?'\u2014':pct+'%')+'</div>'
       +'<div style="font-size:13px;font-weight:600;color:var(--tx1);margin-top:6px">'+label+'</div>'
       +'<div style="font-size:11px;color:var(--tx3);margin-top:2px">'+sub+'</div>'
-      +(pct!==null?'<div style="background:rgba(0,0,0,.08);border-radius:4px;height:4px;margin-top:10px"><div style="background:'+col+';width:'+Math.min(pct,100)+'%;height:100%;border-radius:4px"></div></div>':'')
-      +'</div>';
+      +(pct!==null?'<div style="background:rgba(0,0,0,.08);border-radius:4px;height:4px;margin-top:10px"><div style="background:'+col+';width:'+Math.min(pct,100)+'%;height:100%;border-radius:4px"></div></div>':'')+'</div>';
   }
-
-  var html = '';
-
-  // Header
-  html += '<div class="section-header" style="align-items:center">';
-  html += '<div class="section-title">Estatísticas — '+PERSON_LABELS[p]+'</div>';
-  html += '<input type="month" value="'+month+'" '
-        +'style="padding:5px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--tx1);font-size:13px;cursor:pointer" '
-        +'onchange="state.statsMonth=this.value;renderStats()">';
-  html += '</div>';
-
-  // Top row: 4 small stat cards
-  html += '<div class="stats-grid" style="margin-bottom:20px">';
-  html += '<div class="stat-card"><div class="stat-num">'+allActive.length+'</div><div class="stat-label">Em curso</div></div>';
-  html += '<div class="stat-card"><div class="stat-num">'+allDone.length+'</div><div class="stat-label">Concluídas</div></div>';
-  html += '<div class="stat-card"><div class="stat-num">'+tasks.length+'</div><div class="stat-label">Total</div></div>';
-  html += '<div class="stat-card"><div class="stat-num">'+kpis.length+'</div><div class="stat-label">KPIs</div></div>';
-  html += '</div>';
-
-  // Overdue alert
-  if (overdue.length) {
-    html += '<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:10px;padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:10px">';
-    html += '<span style="font-size:18px">⚠️</span>';
-    html += '<div><div style="font-size:13px;font-weight:600;color:var(--red)">'+overdue.length+' tarefa(s) em atraso</div>';
-    overdue.forEach(function(t){ html += '<div style="font-size:11px;color:var(--tx2);margin-top:1px">• '+esc(t.desc)+' — deadline '+formatDate(t.end)+'</div>'; });
-    html += '</div></div>';
-  }
-
-  // Month label
-  html += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--tx3);margin-bottom:12px">'+mLbl+'</div>';
-
-  // Big metrics row
-  html += '<div style="display:flex;gap:12px;margin-bottom:20px">';
-  html += bigMetric(pctConc, 'Taxa de conclusão', mDone.length+'/'+mTasks.length+' tarefas concluídas');
-  html += bigMetric(pctDead, 'Cumprimento de deadlines', onTime.length+'/'+mDone.length+' dentro do prazo');
-  html += bigMetric(pctKpi,  'KPIs atingidos', kpiOk.length+'/'+kpis.length+' KPIs ≥ objetivo');
-  html += '</div>';
-
-  // KPI detail
-  if (kpis.length) {
-    html += '<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">';
-    html += '<div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--tx2)">Detalhe KPIs</div>';
-    kpis.forEach(function(k) {
-      var val = k.valor ? parseFloat(k.valor) : null;
-      var tgt = k.target ? parseFloat(k.target) : null;
-      var ok  = val!==null && tgt!==null && val>=tgt;
-      var col = val===null||tgt===null ? 'var(--tx3)' : ok ? '#16a34a' : '#dc2626';
-      html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border)">';
-      html += '<span style="font-size:13px">'+esc(k.name)+'</span>';
-      html += '<div style="display:flex;align-items:center;gap:8px">';
-      html += '<span style="font-size:13px;font-weight:700;color:'+col+'">'+(val!==null?val+(k.unit?' '+k.unit:''):'—')+'</span>';
-      if (tgt!==null) html += '<span style="font-size:11px;color:var(--tx3)">/ '+tgt+(k.unit?' '+k.unit:'')+'</span>';
-      if (val!==null && tgt!==null) html += '<span style="font-size:10px;padding:2px 6px;border-radius:10px;background:'+(ok?'rgba(22,163,74,.12)':'rgba(220,38,38,.12)')+';color:'+col+'">'+(ok?'✓':'✗')+'</span>';
-      html += '</div></div>';
-    });
-    html += '</div>';
-  }
-
-  document.getElementById('tab-stats').innerHTML = html;
+  var html='';
+  html+='<div class="section-header" style="align-items:center"><div class="section-title">Estat\u00edsticas \u2014 '+PERSON_LABELS[p]+'</div>';
+  html+='<input type="month" value="'+month+'" style="padding:5px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--tx1);font-size:13px;cursor:pointer" onchange="state.statsMonth=this.value;renderStats()"></div>';
+  html+='<div class="stats-grid" style="margin-bottom:20px">';
+  html+='<div class="stat-card"><div class="stat-num">'+allActive.length+'</div><div class="stat-label">Em curso</div></div>';
+  html+='<div class="stat-card"><div class="stat-num">'+allDone.length+'</div><div class="stat-label">Conclu\u00eddas</div></div>';
+  html+='<div class="stat-card"><div class="stat-num">'+tasks.length+'</div><div class="stat-label">Total</div></div>';
+  html+='<div class="stat-card"><div class="stat-num">'+kpis.length+'</div><div class="stat-label">KPIs</div></div></div>';
+  if(overdue.length){html+='<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:10px;padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:10px"><span style="font-size:18px">\u26a0\ufe0f</span><div><div style="font-size:13px;font-weight:600;color:var(--red)">'+overdue.length+' tarefa(s) em atraso</div>';overdue.forEach(function(t){html+='<div style="font-size:11px;color:var(--tx2);margin-top:1px">\u2022 '+esc(t.desc)+' \u2014 '+formatDate(t.end)+'</div>';});html+='</div></div>';}
+  html+='<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--tx3);margin-bottom:12px">'+mLbl+'</div>';
+  html+='<div style="display:flex;gap:12px;margin-bottom:20px">';
+  html+=bigMetric(pctConc,'Taxa de conclus\u00e3o',mDone.length+'/'+mTasks.length+' tarefas conclu\u00eddas');
+  html+=bigMetric(pctDead,'Cumprimento de deadlines',onTime.length+'/'+mDone.length+' dentro do prazo');
+  html+=bigMetric(pctKpi,'KPIs atingidos',kpiOk.length+'/'+kpis.length+' KPIs \u2265 objetivo');
+  html+='</div>';
+  if(kpis.length){html+='<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden"><div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--tx2)">Detalhe KPIs</div>';kpis.forEach(function(k){var val=k.valor?parseFloat(k.valor):null,tgt=k.target?parseFloat(k.target):null,ok=val!==null&&tgt!==null&&val>=tgt,col=val===null||tgt===null?'var(--tx3)':ok?'#16a34a':'#dc2626';html+='<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border)"><span style="font-size:13px">'+esc(k.name)+'</span><div style="display:flex;align-items:center;gap:8px"><span style="font-size:13px;font-weight:700;color:'+col+'">'+(val!==null?val+(k.unit?' '+k.unit:''):'\u2014')+'</span>'+(tgt!==null?'<span style="font-size:11px;color:var(--tx3)">/ '+tgt+(k.unit?' '+esc(k.unit):'')+' </span>':'')+(val!==null&&tgt!==null?'<span style="font-size:10px;padding:2px 6px;border-radius:10px;background:'+(ok?'rgba(22,163,74,.12)':'rgba(220,38,38,.12)')+';color:'+col+'">'+(ok?'\u2713':'\u2717')+'</span>':'')+'</div></div>';});html+='</div>';}
+  document.getElementById('tab-stats').innerHTML=html;
 }
 
 
@@ -2346,6 +2279,29 @@ function printWeekPlan(wStart, wEnd) {
   });
   doc += '</div>';
 
+  doc += '
+<!-- MODAL KPI VALOR -->
+<div class="overlay hidden" id="modal-kpi-valor">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-header">
+      <div class="modal-title">Registar Valor Atingido</div>
+      <button class="icon-btn" onclick="closeModal('modal-kpi-valor')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="kpiv-id"><input type="hidden" id="kpiv-person">
+      <div style="font-size:14px;font-weight:600;margin-bottom:6px" id="kpiv-name"></div>
+      <div style="font-size:12px;color:var(--tx2);margin-bottom:16px" id="kpiv-obj"></div>
+      <div class="field"><label class="label">Valor atingido</label>
+        <input type="number" id="kpiv-valor" placeholder="Ex: 87" step="0.1"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-kpi-valor')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveKpiValor()">Guardar</button>
+    </div>
+  </div>
+</div>
+</body></html>';
+
   var win = window.open('', '_blank');
   win.document.write(doc);
   win.document.close();
@@ -2533,63 +2489,69 @@ function renderKpis() {
   html += '<button class="btn btn-primary btn-sm" onclick="openNewKpi()">+ Novo KPI</button>';
   html += '<button class="btn btn-outline btn-sm" onclick="openImportPDF()">📄 Importar PDF</button>';
   html += '</div></div>';
-  html += '<div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">';
-  ['rn','cg','pf','ir'].forEach(function(pk) {
-    var a = pk===p;
-    html += '<button onclick="state.person=\'' + pk + '\';renderKpis()" style="padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:' + (a?'var(--navy)':'var(--surface)') + ';color:' + (a?'#fff':'var(--tx1)') + ';cursor:pointer;font-size:12px">' + PERSON_INFO[pk].firstName + '</button>';
-  });
-  html += '</div>';
-  var activeKpis = kpis.filter(function(k){ return k.status !== 'Concluído'; });
-  var doneKpis   = kpis.filter(function(k){ return k.status === 'Concluído'; });
-
+) {
+  var p = state.person;
+  var kpis = (state.data.kpis||[]).filter(function(k){return k.person===p;});
+  var html = '<div class="section-header">';
+  html += '<div class="section-title">🎯 KPIs — ' + PERSON_LABELS[p] + '</div>';
+  html += '<div style="display:flex;gap:6px">';
+  html += '<button class="btn btn-primary btn-sm" onclick="openNewKpi()">+ Novo KPI</button>';
+  html += '<button class="btn btn-outline btn-sm" onclick="openImportPDF()">📄 Importar PDF</button>';
+  html += '</div></div>';
+) {
+  var p = state.person;
+  var kpis = (state.data.kpis||[]).filter(function(k){return k.person===p;});
+  var html = '<div class="section-header">';
+  html += '<div class="section-title">🎯 KPIs — ' + PERSON_LABELS[p] + '</div>';
+  html += '<div style="display:flex;gap:6px">';
+  html += '<button class="btn btn-primary btn-sm" onclick="openNewKpi()">+ Novo KPI</button>';
+  html += '<button class="btn btn-outline btn-sm" onclick="openImportPDF()">📄 Importar PDF</button>';
+  html += '</div></div>';
+) {
+  var p = state.person;
+  var kpis = (state.data.kpis||[]).filter(function(k){return k.person===p;});
+  var html = '<div class="section-header">';
+  html += '<div class="section-title">🎯 KPIs — ' + PERSON_LABELS[p] + '</div>';
+  html += '<div style="display:flex;gap:6px">';
+  html += '<button class="btn btn-primary btn-sm" onclick="openNewKpi()">+ Novo KPI</button>';
+  html += '<button class="btn btn-outline btn-sm" onclick="openImportPDF()">📄 Importar PDF</button>';
+  html += '</div></div>';
+  var activeKpis=kpis.filter(function(k){return k.status!=='Concluído';});
+  var doneKpis=kpis.filter(function(k){return k.status==='Concluído';});
   if (!kpis.length) {
     html += '<div style="color:var(--tx3);text-align:center;padding:32px 0;font-size:13px">Sem KPIs definidos para ' + PERSON_INFO[p].firstName + '</div>';
   } else {
-    if (activeKpis.length) {
-      html += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--tx3);margin-bottom:8px">Em curso (' + activeKpis.length + ')</div>';
-    }
     activeKpis.forEach(function(k) {
-      var val = k.valor ? parseFloat(k.valor) : null;
-      var tgt = k.target ? parseFloat(k.target) : null;
-      var ok  = val!==null && tgt!==null && val>=tgt;
-      var valColor = val===null ? 'var(--tx3)' : ok ? '#16a34a' : '#dc2626';
+      var val=k.valor?parseFloat(k.valor):null,tgt=k.target?parseFloat(k.target):null;
+      var ok=val!==null&&tgt!==null&&val>=tgt,valCol=val===null?'var(--tx3)':ok?'#16a34a':'#dc2626';
       html += '<div class="task-item" style="margin-bottom:10px">';
       html += '<div class="task-top"><div class="task-desc">' + esc(k.name) + '</div>';
       html += '<div style="display:flex;gap:6px">';
-      html += '<button class="icon-btn" title="Inserir valor" onclick="openSetKpiValor(\'' + k.id + '\',\'' + p + '\')">📊</button>';
+      html += '<button class="icon-btn" title="Registar valor" onclick="openSetKpiValor(\'' + k.id + '\',\'' + p + '\')">📊</button>';
       html += '<button class="icon-btn" data-act="editKpi" data-id="' + k.id + '" data-p="' + p + '">✏️</button>';
       html += '<button class="icon-btn" data-act="deleteKpi" data-id="' + k.id + '" data-p="' + p + '">🗑️</button>';
       html += '</div></div><div class="task-meta">';
       if (k.target) html += '<span class="pill blue">Objetivo: ' + esc(k.target) + (k.unit?' '+esc(k.unit):'') + '</span>';
-      if (val !== null) {
-        html += '<span class="pill" style="background:' + (ok?'rgba(22,163,74,.12)':'rgba(220,38,38,.12)') + ';color:' + valColor + ';font-weight:600">' + (ok?'✓ ':'✗ ') + val + (k.unit?' '+esc(k.unit):'') + '</span>';
-      } else {
-        html += '<span class="pill gray">Sem valor inserido</span>';
-      }
+      if (val!==null) html += '<span class="pill" style="background:'+(ok?'rgba(22,163,74,.12)':'rgba(220,38,38,.12)')+';color:'+valCol+';font-weight:600">'+(ok?'✓':'✗')+' '+val+(k.unit?' '+esc(k.unit):'')+' </span>';
+      else html += '<span class="pill gray">Sem valor inserido</span>';
       if (k.notes) html += '<span class="pill gray">' + esc(k.notes) + '</span>';
       html += '</div></div>';
     });
-
-    // Concluídos
-    if (doneKpis.length) {
-      html += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--tx3);margin:20px 0 8px">Concluídos (' + doneKpis.length + ')</div>';
-      doneKpis.forEach(function(k) {
-        var val = k.valor ? parseFloat(k.valor) : null;
-        var tgt = k.target ? parseFloat(k.target) : null;
-        var ok  = val!==null && tgt!==null && val>=tgt;
-        var col = ok ? '#16a34a' : '#dc2626';
-        html += '<div class="task-item done" style="margin-bottom:8px;opacity:.8">';
-        html += '<div class="task-top">';
-        html += '<div class="task-desc">' + esc(k.name) + '</div>';
-        html += '<div style="display:flex;align-items:center;gap:8px">';
-        html += '<span style="font-size:12px;font-weight:700;color:' + col + '">' + (ok?'✓':'✗') + ' ' + val + (k.unit?' '+esc(k.unit):'') + ' / ' + tgt + (k.unit?' '+esc(k.unit):'') + '</span>';
-        html += '<button class="icon-btn" data-act="editKpi" data-id="' + k.id + '" data-p="' + p + '">✏️</button>';
-        html += '<button class="icon-btn" data-act="deleteKpi" data-id="' + k.id + '" data-p="' + p + '">🗑️</button>';
-        html += '</div></div></div>';
+    if(doneKpis.length){
+      html+='<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--tx3);margin:20px 0 8px">Concluídos ('+doneKpis.length+')</div>';
+      doneKpis.forEach(function(k){
+        var val=k.valor?parseFloat(k.valor):null,tgt=k.target?parseFloat(k.target):null,ok=val!==null&&tgt!==null&&val>=tgt,col=ok?'#16a34a':'#dc2626';
+        html+='<div class="task-item done" style="margin-bottom:8px;opacity:.8">';
+        html+='<div class="task-top"><div class="task-desc">'+esc(k.name)+'</div>';
+        html+='<div style="display:flex;align-items:center;gap:8px">';
+        html+='<span style="font-size:12px;font-weight:700;color:'+col+'">'+(ok?'✓':'✗')+' '+val+(k.unit?' '+esc(k.unit):'')+' / '+tgt+(k.unit?' '+esc(k.unit):'')+' </span>';
+        html+='<button class="icon-btn" data-act="editKpi" data-id="'+k.id+'" data-p="'+p+'">✏️</button>';
+        html+='<button class="icon-btn" data-act="deleteKpi" data-id="'+k.id+'" data-p="'+p+'">🗑️</button>';
+        html+='</div></div></div>';
       });
     }
   }
-  document.getElementById('tab-kpis').innerHTML = html;
+  document.getElementById('tab-kpis').innerHTML=html;
 }
 
 
@@ -2871,95 +2833,36 @@ function confirmImport() {
 
 
 
-function openModal(id) {
-  document.getElementById(id).classList.remove('hidden');
+function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+function showToast(msg,type) {
+  var c=document.getElementById('toast-container'); if (!c) return;
+  var t=document.createElement('div'); t.className='toast '+(type||'info'); t.textContent=msg;
+  c.appendChild(t); setTimeout(function(){t.remove();},3500);
 }
-function closeModal(id) {
-  document.getElementById(id).classList.add('hidden');
-}
-function showToast(msg, type) {
-  var c = document.getElementById('toast-container');
-  if (!c) return;
-  var t = document.createElement('div');
-  t.className = 'toast ' + (type || 'info');
-  t.textContent = msg;
-  c.appendChild(t);
-  setTimeout(function(){ t.remove(); }, 3500);
-}
+document.addEventListener('click',function(e){ if(e.target.classList.contains('overlay')) closeModal(e.target.id); });
 
-// Close modal on overlay click
-document.addEventListener('click', function(e) {
-  if (e.target.classList.contains('overlay')) closeModal(e.target.id);
-});
+function openNewAbsence(){var p=state.person;document.getElementById('absence-id').value='';document.getElementById('absence-person-key').value=p;document.getElementById('absence-type').value='Falta';document.getElementById('absence-start').value=todayISO();document.getElementById('absence-end').value=todayISO();document.getElementById('absence-notes').value='';document.getElementById('modal-absence-title').textContent='Nova Ausência — '+PERSON_LABELS[p];openModal('modal-absence');}
+function openEditAbsence(a,pk){document.getElementById('absence-id').value=a.id;document.getElementById('absence-person-key').value=pk;document.getElementById('absence-type').value=a.type_||'Falta';document.getElementById('absence-start').value=a.start||'';document.getElementById('absence-end').value=a.end||a.start||'';document.getElementById('absence-notes').value=a.notes||'';document.getElementById('modal-absence-title').textContent='Editar Ausência';openModal('modal-absence');}
+function saveAbsence(){var id=document.getElementById('absence-id').value,p=document.getElementById('absence-person-key').value,type_=document.getElementById('absence-type').value,start=document.getElementById('absence-start').value,end=document.getElementById('absence-end').value,notes=document.getElementById('absence-notes').value;if(!start){showToast('Selecciona data de início','error');return;}if(!end||end<start)end=start;var action=id?'editAbsence':'addAbsence',payload={person:p,type_:type_,start:start,end:end,notes:notes};if(id)payload.id=id;closeModal('modal-absence');callServer(action,payload,function(err,res){if(err||(res&&res.error)){showToast('Erro ao guardar ausência','error');return;}showToast((id?'Ausência actualizada':'Ausência registada')+' ✓','success');loadData();});}
+function deleteAbsenceById(id,p){if(!confirm('Eliminar esta ausência?'))return;callServer('deleteAbsence',{id:id,person:p},function(err,res){if(err||(res&&res.error)){showToast('Erro','error');return;}showToast('Ausência eliminada','success');loadData();});}
 
-function openNewAbsence() {
-  var p = state.person;
-  document.getElementById('absence-id').value = '';
-  document.getElementById('absence-person-key').value = p;
-  document.getElementById('absence-type').value = 'Falta';
-  document.getElementById('absence-start').value = todayISO();
-  document.getElementById('absence-end').value = todayISO();
-  document.getElementById('absence-notes').value = '';
-  document.getElementById('modal-absence-title').textContent = 'Nova Aus\u00eancia \u2014 ' + PERSON_LABELS[p];
-  openModal('modal-absence');
-}
-function openEditAbsence(absence, personKey) {
-  document.getElementById('absence-id').value = absence.id;
-  document.getElementById('absence-person-key').value = personKey;
-  document.getElementById('absence-type').value = absence.type_ || 'Falta';
-  document.getElementById('absence-start').value = absence.start || '';
-  document.getElementById('absence-end').value = absence.end || absence.start || '';
-  document.getElementById('absence-notes').value = absence.notes || '';
-  document.getElementById('modal-absence-title').textContent = 'Editar Aus\u00eancia';
-  openModal('modal-absence');
-}
-function saveAbsence() {
-  var id    = document.getElementById('absence-id').value;
-  var p     = document.getElementById('absence-person-key').value;
-  var type_ = document.getElementById('absence-type').value;
-  var start = document.getElementById('absence-start').value;
-  var end   = document.getElementById('absence-end').value;
-  var notes = document.getElementById('absence-notes').value;
-  if (!start) { showToast('Selecciona uma data de in\u00edcio', 'error'); return; }
-  if (!end || end < start) end = start;
-  var action = id ? 'editAbsence' : 'addAbsence';
-  var payload = { person:p, type_:type_, start:start, end:end, notes:notes };
-  if (id) payload.id = id;
-  closeModal('modal-absence');
-  callServer(action, payload, function(err, res) {
-    if (err || (res && res.error)) { showToast('Erro ao guardar aus\u00eancia', 'error'); return; }
-    showToast((id ? 'Aus\u00eancia actualizada' : 'Aus\u00eancia registada') + ' \u2713', 'success');
-    loadData();
-  });
-}
-function deleteAbsenceById(id, p) {
-  if (!confirm('Eliminar esta aus\u00eancia?')) return;
-  callServer('deleteAbsence', { id:id, person:p }, function(err, res) {
-    if (err || (res && res.error)) { showToast('Erro ao eliminar', 'error'); return; }
-    showToast('Aus\u00eancia eliminada', 'success');
-    loadData();
-  });
-}
-
-function openSetKpiValor(id, p) {
-  var kpi = findKpi(id);
-  if (!kpi) return;
-  document.getElementById('kpiv-id').value = id;
-  document.getElementById('kpiv-person').value = p;
-  document.getElementById('kpiv-name').textContent = kpi.name;
-  document.getElementById('kpiv-obj').textContent = kpi.target ? 'Objetivo: ' + kpi.target + (kpi.unit ? ' ' + kpi.unit : '') : '';
-  document.getElementById('kpiv-valor').value = kpi.valor || '';
+function openSetKpiValor(id,p){
+  var kpi=findKpi(id); if(!kpi) return;
+  document.getElementById('kpiv-id').value=id;
+  document.getElementById('kpiv-person').value=p;
+  document.getElementById('kpiv-name').textContent=kpi.name;
+  document.getElementById('kpiv-obj').textContent=kpi.target?'Objetivo: '+kpi.target+(kpi.unit?' '+kpi.unit:''):'';
+  document.getElementById('kpiv-valor').value=kpi.valor||'';
   openModal('modal-kpi-valor');
 }
-function saveKpiValor() {
-  var id    = document.getElementById('kpiv-id').value;
-  var p     = document.getElementById('kpiv-person').value;
-  var valor = document.getElementById('kpiv-valor').value.trim();
-  if (!valor) { showToast('Insere o valor atingido', 'error'); return; }
+function saveKpiValor(){
+  var id=document.getElementById('kpiv-id').value,p=document.getElementById('kpiv-person').value,valor=document.getElementById('kpiv-valor').value.trim();
+  if(!valor){showToast('Insere o valor atingido','error');return;}
   closeModal('modal-kpi-valor');
-  callServer('editKpi', { id:id, person:p, valor:valor, status:'Concluído' }, function(err, res) {
-    if (err||(res&&res.error)) { showToast('Erro ao guardar', 'error'); return; }
-    showToast('KPI concluído ✓', 'success');
+  callServer('editKpi',{id:id,person:p,valor:valor,status:'Concluído'},function(err,res){
+    if(err||(res&&res.error)){showToast('Erro ao guardar','error');return;}
+    showToast('KPI concluído ✓','success');
     loadData();
   });
 }
@@ -3003,27 +2906,3 @@ function saveKpiValor() {
   </div>
 </div>
 <input type="file" id="import-pdf-input" accept=".pdf" style="display:none" onchange="handleImportPDF(this)">
-<!-- MODAL KPI VALOR -->
-<div class="overlay hidden" id="modal-kpi-valor">
-  <div class="modal" style="max-width:380px">
-    <div class="modal-header">
-      <div class="modal-title">Registar Valor Atingido</div>
-      <button class="icon-btn" onclick="closeModal('modal-kpi-valor')">✕</button>
-    </div>
-    <div class="modal-body">
-      <input type="hidden" id="kpiv-id">
-      <input type="hidden" id="kpiv-person">
-      <div style="font-size:14px;font-weight:600;margin-bottom:6px" id="kpiv-name"></div>
-      <div style="font-size:12px;color:var(--tx2);margin-bottom:16px" id="kpiv-obj"></div>
-      <div class="field"><label class="label">Valor atingido</label>
-        <input type="number" id="kpiv-valor" placeholder="Ex: 87" step="0.1">
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeModal('modal-kpi-valor')">Cancelar</button>
-      <button class="btn btn-primary" onclick="saveKpiValor()">Guardar</button>
-    </div>
-  </div>
-</div>
-</body>
-</html>
