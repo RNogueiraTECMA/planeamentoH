@@ -2957,13 +2957,10 @@ function saveKpiValor() {
   var valor = document.getElementById('kpiv-valor').value.trim();
   if (!valor) { showToast('Insere o valor atingido', 'error'); return; }
   closeModal('modal-kpi-valor');
-  callServer('editKpi', { id:id, person:p, valor:valor }, function(err, res) {
+  callServer('editKpi', { id:id, person:p, valor:valor, status:'Concluído' }, function(err, res) {
     if (err||(res&&res.error)) { showToast('Erro ao guardar', 'error'); return; }
-    var kpis = state.data.kpis || [];
-    for (var i=0;i<kpis.length;i++) { if (kpis[i].id===id) { kpis[i].valor=valor; break; } }
-    showToast('Valor registado \u2713', 'success');
-    if (state.tab==='kpis')  renderKpis();
-    if (state.tab==='stats') renderStats();
+    showToast('KPI concluído ✓', 'success');
+    loadData();
   });
 }
 
@@ -3005,7 +3002,7 @@ function saveKpiValor() {
     </div>
   </div>
 </div>
-<input type="file" id="import-pdf-input" accept=".pdf" style="display:none" onchange="handleImportPDF(this)"
+<input type="file" id="import-pdf-input" accept=".pdf" style="display:none" onchange="handleImportPDF(this)">
 <!-- MODAL KPI VALOR -->
 <div class="overlay hidden" id="modal-kpi-valor">
   <div class="modal" style="max-width:380px">
