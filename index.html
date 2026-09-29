@@ -1022,8 +1022,7 @@ function renderTaskItem(t, p) {
   if (t.start) html += '<span class="pill gray">Início: ' + formatDate(t.start) + '</span>';
   html += '<span class="pill ' + (overdue ? 'red' : 'orange') + '">📅 ' + deadline + '</span>';
   if (isDone && t.hoursSpent) {
-    var v = t.hoursSpent - totalH;
-    html += '<span class="pill ' + (v > 0 ? 'red' : 'green') + '">' + (v > 0 ? '+' : '') + v.toFixed(1) + 'h real</span>';
+    html += '<span class="pill">' + parseFloat(t.hoursSpent).toFixed(1) + 'h</span>';
   }
   html += '<span class="pill ' + (isDone ? 'green' : 'blue') + '">' + t.status + '</span>';
   html += '</div>';
