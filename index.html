@@ -546,16 +546,6 @@ var state = {
 };
 
 var PERSON_LABELS = { rn: 'Ricardo Nogueira', cg: 'Cristiana Gonçalves', pf: 'Pedro Fernandes', ir: 'Inês Reis' };
-var SCHEDULES = {
-  rn: { start:6,   end:14,  hoursPerDay:7.5, label:'06:00–14:00',
-        breaks:[{s:9, e:9.25, label:'Pausa 15min'},{s:11,e:11.25,label:'Pausa 15min'}] },
-  cg: { start:8.5, end:17.5,hoursPerDay:7.5, label:'08:30–17:30',
-        breaks:[{s:11,e:11.25,label:'Pausa 15min'},{s:13,e:14,label:'Almoço 1h'},{s:16,e:16.25,label:'Pausa 15min'}] },
-  pf: { start:8.5, end:17.5,hoursPerDay:7.5, label:'08:30–17:30',
-        breaks:[{s:11,e:11.25,label:'Pausa 15min'},{s:13,e:14,label:'Almoço 1h'},{s:16,e:16.25,label:'Pausa 15min'}] },
-  ir: { start:8.5, end:17.5,hoursPerDay:7.5, label:'08:30–17:30',
-        breaks:[{s:11,e:11.25,label:'Pausa 15min'},{s:13,e:14,label:'Almoço 1h'},{s:16,e:16.25,label:'Pausa 15min'}] }
-};
 
 var PERSON_INFO = {
   rn: { ini:'RN', avCls:'av-rn', firstName:'Ricardo',  sched:'06:00–14:00', fabril:{start:6,end:9} },
@@ -753,7 +743,6 @@ function onDataLoaded(result) {
   state.loaded = true;
   invalidateFabrilCache();
   hideLoader();
-  try { checkDeadlineOverload(todayISO()); } catch(e) {}
   render();
 }
 
@@ -969,39 +958,9 @@ function renderItems() {
   html += renderScheduleList(p);
   document.getElementById('tab-items').innerHTML = html;
 }
-function renderTasks() {
-  var p = state.person;
-  var tasks = (state.data.tasks[p] || []).filter(function(t) {
-    return t.status !== 'Eliminada' && t.status !== 'Eliminado';
-  });
-  var active = tasks.filter(function(t){ return t.status !== 'Concluída' && t.status !== 'Concluida'; });
-  var done   = tasks.filter(function(t){ return t.status === 'Concluída' || t.status === 'Concluida'; });
-  active.sort(sortByStart); done.sort(sortByStart);
-
-  var html = '<div class="section-header">';
-  html += '<div class="section-title">Tarefas — ' + PERSON_LABELS[p] + '</div>';
-  html += '<button class="btn btn-primary" onclick="openNewTask()">+ Nova Tarefa</button>';
-  html += '</div>';
-
-  if (active.length === 0 && done.length === 0) {
-    html += '<div class="empty"><div class="empty-icon">📋</div><p>Sem tarefas. Cria a primeira!</p></div>';
-  } else {
-    if (active.length > 0) {
-      html += '<div style="font-size:12px;font-weight:600;color:var(--tx2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Em curso (' + active.length + ')</div>';
-      active.forEach(function(t) { html += renderTaskItem(t, p); });
-    }
-    if (done.length > 0) {
-      html += '<div style="font-size:12px;font-weight:600;color:var(--tx2);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 10px">Concluídas (' + done.length + ')</div>';
-      done.forEach(function(t) { html += renderTaskItem(t, p); });
-    }
-  }
-
-  document.getElementById('tab-tasks').innerHTML = html;
-}
 
 function renderTaskItem(t, p) {
   var isDone = t.status === 'Concluída';
-  var totalH = (t.hours || 0) + (t.hoursExtra || 0);
   var deadline = t.end ? formatDate(t.end) : '—';
   var overdue = t.end && !isDone && new Date(t.end) < new Date();
 
@@ -1590,44 +1549,7 @@ function buildCoverageSlotsForDay(day, presentPeople) {
   return slots;
 }
 
-function getUrgencyScore(p, refDay) {
-  var tasks = (state.data.tasks[p]||[]).filter(function(t){
-    return t.status==='Em curso' && t.end && t.end>=refDay && (!t.start||t.start<=refDay);
-  });
-  var score = 0;
-  tasks.forEach(function(t){
-    score += ((t.hours||0)+(t.hoursExtra||0)) / Math.max(1, countWorkdays(refDay, t.end));
-  });
-  return score;
-}
 
-function weeklyHoursNeeded(p, day) {
-  var tasks = (state.data.tasks[p]||[]).filter(function(t){
-    return t.status==='Em curso' && t.end>=day && (!t.start||t.start<=day);
-  });
-  if (!tasks.length) return 0;
-  var totalH = tasks.reduce(function(s,t){ return s+(t.hours||0)+(t.hoursExtra||0); }, 0);
-  var earliestEnd = tasks.reduce(function(e,t){ return t.end<e?t.end:e; }, '9999');
-  var daysLeft = Math.max(1, countWorkdays(day, earliestEnd));
-  var d = new Date(day+'T12:00:00');
-  var dow = d.getDay();
-  var daysThisWeek = (dow===0||dow===6) ? 0 : (6-dow);
-  if (daysThisWeek < 1) daysThisWeek = 1;
-  return Math.ceil(totalH * daysThisWeek / daysLeft);
-}
-
-function weeklyOfficeAvailable(p, fabBidxsToday, day) {
-  var blocks = getOfficeBlocksForDay(p, day);
-  var todayOffice = 0;
-  blocks.forEach(function(block, idx){
-    if (fabBidxsToday.indexOf(idx)===-1) todayOffice += block.length;
-  });
-  var d = new Date(day+'T12:00:00');
-  var dow = d.getDay();
-  var daysThisWeek = (dow===0||dow===6) ? 0 : (6-dow);
-  var futureOffice = getTotalOfficeSlotsForDay(p, day) * Math.max(0, daysThisWeek-1);
-  return todayOffice + futureOffice;
-}
 
 function hasEventInBlock(p, day, blockHours) {
   var evs = state.data.events[p] || [];
@@ -1658,8 +1580,7 @@ function invalidateFabrilCache() { _planCache = {}; }
 
 function computeFabrilAssignment(day, weeklyOfficeAccum) {
   // Urgency scores no longer drive fabril rotation.
-  // Office time is distributed equally; only deadline impossibility overrides balance.
-  // (getUrgencyScore still used in weeklyHoursNeeded for impossibility detection)
+  // Office time is distributed equally via equal-distribution scoring.
   var localFabCount = { rn:0, cg:0, pf:0, ir:0 };
   var fabBidx = { rn:[], cg:[], pf:[], ir:[] };
 
@@ -1697,11 +1618,6 @@ function computeFabrilAssignment(day, weeklyOfficeAccum) {
 
       // Forced fab → person already going to fabril, score irrelevant but they can still cover
       // (forced fab is handled separately in grid, not here)
-
-      var tentative = fabBidx[p].concat([bidx]);
-      var avail = weeklyOfficeAvailable(p, tentative, day);
-      var need  = weeklyHoursNeeded(p, day);
-      var affordable = avail >= need;
 
       // Algoritmo simples: quem tem mais horas de escritório esta semana vai ao fabril
       // Sem urgência, sem tarefas — distribuição igualitária pura
@@ -1792,26 +1708,6 @@ function isOnFabrilDuty(p, day, hh) {
   return false;
 }
 
-// Check if adding tasks makes deadlines impossible — call after loading data
-function checkDeadlineOverload(day) {
-  var warnings = [];
-  ['rn','cg','pf','ir'].forEach(function(p) {
-    var tasks = (state.data.tasks[p]||[]).filter(function(t){
-      return t.status==='Em curso' && t.end && (!t.start||t.start<=t.end);
-    });
-    tasks.forEach(function(t) {
-      var totalH = (t.hours||0)+(t.hoursExtra||0);
-      var wdays  = countWorkdays(t.start||day, t.end);
-      // Use dynamic slots per day — approximate with default profile slots
-      var maxSlotsPerDay = getTotalOfficeSlotsForDay(p, day);
-      var maxH = wdays * maxSlotsPerDay;
-      if (totalH > maxH) {
-        warnings.push(PERSON_LABELS[p]+': "'+t.desc+'" pode ser difícil ('+totalH+'h em '+wdays+' dias úteis)');
-      }
-    });
-  });
-  return warnings;
-}
 
 function getOfficeDayBlocks(p, day) {
   var assignment = getFabrilAssignmentForDay(day);
@@ -1920,40 +1816,6 @@ function getEventsForDayHour(p, day, hh) {
 }
 
 
-// ═══════════════════════════════════════════════════════════
-//  EVENTS TAB
-// ═══════════════════════════════════════════════════════════
-function renderEvents() {
-  var p = state.person;
-  var events = (state.data.events[p] || []).filter(function(e) {
-    return e.status !== 'Eliminado' && e.status !== 'Eliminada';
-  });
-  events.sort(function(a,b){ return new Date(a.date) - new Date(b.date); });
-
-  var html = '<div class="section-header">';
-  html += '<div class="section-title">Eventos — ' + PERSON_LABELS[p] + '</div>';
-  html += '<button class="btn btn-primary" onclick="openNewEvent()">+ Novo Evento</button>';
-  html += '</div>';
-
-  if (events.length === 0) {
-    html += '<div class="empty"><div class="empty-icon">🗓</div><p>Sem eventos registados.</p></div>';
-  } else {
-    var today = new Date(); today.setHours(0,0,0,0);
-    var upcoming = events.filter(function(e){ return new Date(e.date) >= today; });
-    var past     = events.filter(function(e){ return new Date(e.date) < today; });
-
-    if (upcoming.length > 0) {
-      html += '<div style="font-size:12px;font-weight:600;color:var(--tx2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Próximos (' + upcoming.length + ')</div>';
-      upcoming.forEach(function(e) { html += renderEventItem(e, p); });
-    }
-    if (past.length > 0) {
-      html += '<div style="font-size:12px;font-weight:600;color:var(--tx2);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 10px">Passados (' + past.length + ')</div>';
-      past.forEach(function(e) { html += renderEventItem(e, p); });
-    }
-  }
-
-  document.getElementById('tab-events').innerHTML = html;
-}
 
 function renderEventItem(ev, p) {
   var st = formatTime(ev.startTime);
@@ -2816,7 +2678,7 @@ function saveKpiValor(){var id=document.getElementById('kpiv-id').value,p=docume
     </div>
   </div>
 </div>
-<input type="file" id="import-pdf-input" accept=".pdf" style="display:none" onchange="handleImportPDF(this)"
+<input type="file" id="import-pdf-input" accept=".pdf" style="display:none" onchange="handleImportPDF(this)">
 <!-- MODAL KPI VALOR -->
 <div class="overlay hidden" id="modal-kpi-valor">
   <div class="modal" style="max-width:380px">
@@ -2833,4 +2695,3 @@ function saveKpiValor(){var id=document.getElementById('kpiv-id').value,p=docume
     </div>
   </div>
 </div>
->
